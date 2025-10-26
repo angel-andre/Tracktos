@@ -30,8 +30,7 @@ serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url);
-    const address = url.searchParams.get('address');
+    const { address } = await req.json();
 
     if (!address) {
       return new Response(
