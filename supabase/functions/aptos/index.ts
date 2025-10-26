@@ -50,18 +50,9 @@ serve(async (req) => {
       ? 'https://indexer-testnet.staging.gcp.aptosdev.com/v1/graphql'
       : 'https://api.mainnet.aptoslabs.com/v1/graphql';
 
-    // GraphQL query for comprehensive data
+    // Updated GraphQL query using current (non-deprecated) schema only
     const graphqlQuery = `
       query GetAccountData($address: String!) {
-        current_coin_balances(where: {owner_address: {_eq: $address}}) {
-          amount
-          coin_type
-          coin_info {
-            name
-            symbol
-            decimals
-          }
-        }
         current_fungible_asset_balances(where: {owner_address: {_eq: $address}}) {
           amount
           asset_type
@@ -121,8 +112,9 @@ serve(async (req) => {
     const data = graphqlData.data;
 
     // Helper to format balance
-    const formatUnits = (value: string, decimals: number): string => {
-      const v = (value || '0').replace(/\D/g, '');
+    const formatUnits = (value: unknown, decimals: number): string => {
+      const raw = value ?? '0';
+      const v = String(raw).replace(/\D/g, '');
       const d = Number.isFinite(decimals) ? Math.max(0, Math.min(18, decimals)) : 8;
       if (!v) return '0';
       if (d === 0) return v;
@@ -132,34 +124,10 @@ serve(async (req) => {
       return out.replace(/0+$/, '').replace(/\.$/, '');
     };
 
-    // Parse coin balances
+    // Parse fungible asset balances (includes APT)
     let aptBalance = '0';
     const tokens: Array<{ name: string; symbol: string; balance: string }> = [];
 
-    if (data.current_coin_balances) {
-      for (const coin of data.current_coin_balances) {
-        const amount = coin.amount || '0';
-        const coinType = coin.coin_type || '';
-        const info = coin.coin_info || {};
-        const symbol = info.symbol || coinType.split('::').pop() || 'Unknown';
-        const name = info.name || symbol;
-        const decimals = Number(info.decimals ?? 8);
-        
-        if (amount !== '0') {
-          const balance = formatUnits(amount, decimals);
-          
-          if (coinType.includes('0x1::aptos_coin::AptosCoin')) {
-            aptBalance = balance;
-            console.log('✓ APT balance:', aptBalance);
-          } else {
-            tokens.push({ name, symbol, balance });
-            console.log('✓ Coin:', symbol, balance);
-          }
-        }
-      }
-    }
-
-    // Parse fungible asset balances
     if (data.current_fungible_asset_balances) {
       for (const fa of data.current_fungible_asset_balances) {
         const amount = fa.amount || '0';
@@ -169,9 +137,15 @@ serve(async (req) => {
           const name = metadata.name || symbol;
           const decimals = Number(metadata.decimals ?? 8);
           const balance = formatUnits(amount, decimals);
-          
-          tokens.push({ name, symbol, balance });
-          console.log('✓ FA:', symbol, balance);
+          const assetType = fa.asset_type || '';
+
+          if (assetType.includes('0x1::aptos_coin::AptosCoin') || symbol === 'APT') {
+            aptBalance = balance;
+            console.log('✓ APT balance (FA):', aptBalance);
+          } else {
+            tokens.push({ name, symbol, balance });
+            console.log('✓ FA:', symbol, balance);
+          }
         }
       }
     }
