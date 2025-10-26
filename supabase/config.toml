@@ -1,1 +1,4 @@
 project_id = "eetgkzhpmcabxygqnjda"
+
+[functions.aptos]
+verify_jwt = false
