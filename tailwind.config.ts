@@ -50,11 +50,11 @@ export default {
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'glow-primary': 'radial-gradient(circle at center, hsl(160 45% 70% / 0.3), transparent)',
+        'glow-primary': 'radial-gradient(circle at center, hsl(160 45% 75% / 0.3), transparent)',
       },
       boxShadow: {
-        'glow': '0 0 40px hsl(160 45% 70% / 0.3)',
-        'glow-lg': '0 0 60px hsl(160 45% 70% / 0.4), 0 0 100px hsl(160 40% 80% / 0.2)',
+        'glow': '0 0 40px hsl(160 45% 75% / 0.4)',
+        'glow-lg': '0 0 60px hsl(160 45% 75% / 0.5), 0 0 100px hsl(0 0% 15% / 0.1)',
       },
       borderRadius: {
         lg: "var(--radius)",
