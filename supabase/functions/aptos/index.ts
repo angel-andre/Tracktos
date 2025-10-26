@@ -50,7 +50,7 @@ serve(async (req) => {
       ? 'https://indexer-testnet.staging.gcp.aptosdev.com/v1/graphql'
       : 'https://api.mainnet.aptoslabs.com/v1/graphql';
 
-    // Updated GraphQL query using current (non-deprecated) schema only
+    // Updated GraphQL query using current (non-deprecated) schema only, with CDN image URIs for NFTs
     const graphqlQuery = `
       query GetAccountData($address: String!) {
         current_fungible_asset_balances(where: {owner_address: {_eq: $address}}) {
@@ -70,6 +70,11 @@ serve(async (req) => {
             collection_id
             largest_property_version_v1
             token_uri
+            cdn_asset_uris {
+              cdn_image_uri
+              raw_image_uri
+              cdn_json_uri
+            }
             current_collection {
               collection_name
             }
@@ -125,23 +130,27 @@ serve(async (req) => {
     };
 
     // Parse fungible asset balances (includes APT)
+    let aptRaw = 0n;
     let aptBalance = '0';
     const tokens: Array<{ name: string; symbol: string; balance: string }> = [];
 
     if (data.current_fungible_asset_balances) {
       for (const fa of data.current_fungible_asset_balances) {
-        const amount = fa.amount || '0';
-        if (amount !== '0') {
+        const amount = fa.amount ?? '0';
+        const rawDigits = String(amount).replace(/\D/g, '');
+        const raw = rawDigits ? BigInt(rawDigits) : 0n;
+        if (raw > 0n) {
           const metadata = fa.metadata || {};
           const symbol = metadata.symbol || 'FA';
           const name = metadata.name || symbol;
           const decimals = Number(metadata.decimals ?? 8);
-          const balance = formatUnits(amount, decimals);
+          const balance = formatUnits(String(raw), decimals);
           const assetType = fa.asset_type || '';
 
-          if (assetType.includes('0x1::aptos_coin::AptosCoin') || symbol === 'APT') {
-            aptBalance = balance;
-            console.log('✓ APT balance (FA):', aptBalance);
+          const isAPT = assetType.includes('0x1::aptos_coin::AptosCoin') || symbol === 'APT' || (name?.toLowerCase?.().includes('aptos') && name.toLowerCase().includes('coin'));
+
+          if (isAPT) {
+            aptRaw += raw;
           } else {
             tokens.push({ name, symbol, balance });
             console.log('✓ FA:', symbol, balance);
@@ -149,6 +158,10 @@ serve(async (req) => {
         }
       }
     }
+
+    // Finalize APT liquid balance
+    aptBalance = formatUnits(String(aptRaw), 8);
+    console.log('✓ APT balance (aggregated FA):', aptBalance);
 
     // Parse staked APT
     let stakedApt = '0';
@@ -160,18 +173,50 @@ serve(async (req) => {
       }
     }
 
-    // Parse NFTs
+    // Parse NFTs with CDN and metadata fallback
     const nfts: Array<{ name: string; collection: string; image: string }> = [];
+
+    const looksLikeImageUrl = (u: string) => /\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(u);
+    const resolveIpfs = (u: string) => {
+      if (!u) return u;
+      if (u.startsWith('ipfs://ipfs/')) return `https://ipfs.io/${u.slice('ipfs://'.length)}`;
+      if (u.startsWith('ipfs://')) return `https://ipfs.io/ipfs/${u.slice('ipfs://'.length)}`;
+      return u;
+    };
+
+    let metadataFetches = 0;
+
     if (data.current_token_ownerships_v2) {
       for (const nft of data.current_token_ownerships_v2) {
         const tokenData = nft.current_token_data;
         if (tokenData) {
           const name = tokenData.token_name || 'Unknown NFT';
           const collection = tokenData.current_collection?.collection_name || 'Unknown Collection';
-          const image = tokenData.token_uri || '';
-          
+          const cdn = (tokenData.cdn_asset_uris && tokenData.cdn_asset_uris[0]) || null;
+          let image = cdn?.cdn_image_uri || cdn?.raw_image_uri || tokenData.token_uri || '';
+
+          // Prefer JSON from CDN if available
+          const metadataUrl = cdn?.cdn_json_uri || tokenData.token_uri || '';
+
+          // Fallback: fetch metadata JSON and extract image
+          if (metadataUrl && !looksLikeImageUrl(image) && metadataFetches < 10) {
+            try {
+              const metaResp = await fetch(resolveIpfs(metadataUrl));
+              if (metaResp.ok) {
+                const meta = await metaResp.json();
+                const candidate = resolveIpfs(meta?.image || meta?.image_url || meta?.metadata?.image || '');
+                if (candidate) image = candidate;
+              }
+              metadataFetches++;
+            } catch (_) {
+              // ignore
+            }
+          }
+
+          image = resolveIpfs(image);
+
           nfts.push({ name, collection, image });
-          console.log('✓ NFT:', name);
+          console.log('✓ NFT:', name, 'img:', image?.slice(0, 100));
         }
       }
     }
