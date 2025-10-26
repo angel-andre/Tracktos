@@ -44,62 +44,96 @@ serve(async (req) => {
 
     console.log(`Fetching data for address: ${address}`);
 
-    // Fetch account coins/tokens
-    console.log('Calling Aptos API for resources...');
-    const coinsResponse = await fetch(
-      `https://api.mainnet.aptoslabs.com/v1/accounts/${address}/resources`,
-      { headers: { 'Accept': 'application/json' } }
-    );
+    // Try Indexer coins endpoint first; fallback to fullnode resources
+    console.log('Calling Indexer API for coins...');
+    let coins: any[] | null = null;
 
-    console.log('Resources API response status:', coinsResponse.status);
-
-    if (!coinsResponse.ok) {
-      const errorText = await coinsResponse.text();
-      console.error('Coins API error:', coinsResponse.status, errorText);
-      throw new Error('Failed to fetch account resources');
+    try {
+      const coinsResp = await fetch(
+        `https://indexer.mainnet.aptoslabs.com/v1/accounts/${address}/coins`,
+        { headers: { 'Accept': 'application/json' } }
+      );
+      console.log('Coins API response status:', coinsResp.status);
+      if (coinsResp.ok) {
+        const json = await coinsResp.json();
+        if (Array.isArray(json)) coins = json;
+      } else {
+        const errText = await coinsResp.text();
+        console.warn('Coins API not available, falling back to resources:', coinsResp.status, errText);
+      }
+    } catch (e) {
+      console.warn('Coins API fetch failed, falling back to resources:', (e as Error).message);
     }
 
-    const resources = await coinsResponse.json();
-    console.log('Resources fetched:', resources.length, 'items');
-    
-    // Extract APT balance
-    let aptBalance = "0";
-    const coinStoreResource = resources.find((r: any) => 
-      r.type === "0x1::coin::CoinStore<0x1::aptos_coin::AptosCoin>"
-    );
-    
-    if (coinStoreResource) {
-      const rawBalance = coinStoreResource.data?.coin?.value || "0";
-      aptBalance = (parseInt(rawBalance) / 100000000).toFixed(2);
-      console.log('APT balance found:', aptBalance);
-    } else {
-      console.log('No APT balance found in resources');
-    }
+    // Helper to format big integer string using decimals
+    const formatUnits = (value: string, decimals: number): string => {
+      const v = (value || '0').replace(/\D/g, '');
+      const d = Number.isFinite(decimals) ? Math.max(0, Math.min(18, decimals)) : 8;
+      if (!v) return '0';
+      if (d === 0) return v;
+      if (v.length <= d) return `0.${v.padStart(d, '0')}`.replace(/0+$/, '').replace(/\.$/, '');
+      const i = v.length - d;
+      const out = `${v.slice(0, i)}.${v.slice(i)}`;
+      return out.replace(/0+$/, '').replace(/\.$/, '');
+    };
 
-    // Extract fungible assets
+    // Parse tokens and APT balance
+    let aptBalance = '0';
     const tokens: Array<{ name: string; symbol: string; balance: string }> = [];
-    
-    resources.forEach((resource: any) => {
-      if (resource.type.includes("::coin::CoinStore<")) {
-        const match = resource.type.match(/::([^:]+)::([^>]+)>/);
-        if (match && !resource.type.includes("aptos_coin::AptosCoin")) {
-          const symbol = match[2] || "Unknown";
-          const rawBalance = resource.data?.coin?.value || "0";
-          const balance = (parseInt(rawBalance) / 100000000).toFixed(4);
-          
-          tokens.push({
-            name: symbol,
-            symbol: symbol,
-            balance: balance
-          });
+
+    if (Array.isArray(coins)) {
+      console.log('Parsing coins from Indexer:', coins.length);
+      for (const c of coins) {
+        const coinType = c.coin_type || c.asset_type || c.token_type || '';
+        const info = c.coin_info || c.metadata || {};
+        const symbol: string = info.symbol || (coinType.split('::').pop() || 'Unknown');
+        const name: string = info.name || symbol;
+        const decimals: number = Number(info.decimals ?? 8);
+        const raw = c.amount ?? c.balance ?? c.value ?? '0';
+        const balance = formatUnits(String(raw), decimals);
+        if (coinType.includes('0x1::aptos_coin::AptosCoin') || symbol.toUpperCase() === 'APT') {
+          aptBalance = balance;
+        } else if (raw && raw !== '0') {
+          tokens.push({ name, symbol, balance });
         }
       }
-    });
+    } else {
+      console.log('Fetching resources fallback...');
+      const res = await fetch(
+        `https://api.mainnet.aptoslabs.com/v1/accounts/${address}/resources`,
+        { headers: { 'Accept': 'application/json' } }
+      );
+      console.log('Resources API response status:', res.status);
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Resources API error:', res.status, errorText);
+        throw new Error('Failed to fetch account resources');
+      }
+      const resources = await res.json();
+      console.log('Resources fetched:', resources.length);
+      for (const resource of resources) {
+        if (typeof resource?.type === 'string' && resource.type.startsWith('0x1::coin::CoinStore<')) {
+          const coinType = resource.type.slice('0x1::coin::CoinStore<'.length, -1);
+          const raw = resource.data?.coin?.value || '0';
+          const balance = formatUnits(String(raw), 8);
+          if (coinType.includes('0x1::aptos_coin::AptosCoin')) {
+            aptBalance = balance;
+          } else if (raw !== '0') {
+            const symbol = coinType.split('::').pop() || 'Unknown';
+            tokens.push({ name: symbol, symbol, balance });
+          }
+        }
+      }
+    }
+
+    // Sort tokens by numeric balance desc and get top 5
+    tokens.sort((a, b) => Number(b.balance) - Number(a.balance));
+    const topTokens = tokens.slice(0, 5);
 
     // Fetch recent transactions
-    console.log('Calling Aptos API for transactions...');
+    console.log('Calling Indexer API for transactions...');
     const txResponse = await fetch(
-      `https://api.mainnet.aptoslabs.com/v1/accounts/${address}/transactions?limit=5`,
+      `https://indexer.mainnet.aptoslabs.com/v1/accounts/${address}/transactions?limit=5`,
       { headers: { 'Accept': 'application/json' } }
     );
 
@@ -132,7 +166,7 @@ serve(async (req) => {
         address,
         aptBalance
       },
-      tokens: tokens.slice(0, 5),
+      tokens: topTokens,
       activity
     };
 
