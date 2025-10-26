@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import JourneyCard from "@/components/JourneyCard";
 import { Loader2, Sparkles } from "lucide-react";
 
 interface JourneyData {
@@ -170,11 +169,6 @@ const Index = () => {
         </div>
 
         {/* Journey Card Display */}
-        {journeyData && (
-          <div className="pt-4">
-            <JourneyCard {...journeyData} />
-          </div>
-        )}
       </div>
     </div>
   );
