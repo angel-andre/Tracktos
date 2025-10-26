@@ -21,21 +21,31 @@ const AptosJourneyCard: React.FC = () => {
     setLoading(true);
 
     try {
-      const txRes = await axios.get(`https://api.mainnet.aptoslabs.com/v1/accounts/${address}/transactions`);
+      // --- Fetch account transactions (limit to 1000) ---
+      const txRes = await axios.get(`https://api.mainnet.aptoslabs.com/v1/accounts/${address}/transactions?limit=1000`);
       const txs = txRes.data;
-      if (!txs.length) {
+
+      if (!txs || txs.length === 0) {
         setError("No transactions found for this address.");
         setJourney(null);
         return;
       }
 
+      // Total number of transactions
       const totalTxs = txs.length;
-      const firstTx = txs[txs.length - 1].timestamp;
-      const firstDate = new Date(Number(firstTx) / 1000).toDateString();
 
-      const res = await axios.get(`https://api.mainnet.aptoslabs.com/v1/accounts/${address}/resources`);
-      const nftResources = res.data.filter((r: any) => r.type.includes("Token"));
-      const nftCount = nftResources.length;
+      // Convert first transaction timestamp (microseconds → ms)
+      const oldestTx = txs[txs.length - 1];
+      const firstDate = new Date(Number(oldestTx.timestamp) / 1000000).toDateString();
+
+      // --- Fetch owned NFTs ---
+      const nftRes = await axios.get(
+        `https://api.mainnet.aptoslabs.com/v1/accounts/${address}/current_token_ownerships`,
+      );
+
+      const ownedNfts = nftRes.data.filter((nft: any) => nft.current_token_data?.metadata_uri);
+
+      const nftCount = ownedNfts.length;
 
       setJourney({
         address,
@@ -45,7 +55,7 @@ const AptosJourneyCard: React.FC = () => {
       });
     } catch (e) {
       console.error(e);
-      setError("Error fetching data. Check address and try again.");
+      setError("Error fetching data. Please verify the wallet address.");
       setJourney(null);
     } finally {
       setLoading(false);
