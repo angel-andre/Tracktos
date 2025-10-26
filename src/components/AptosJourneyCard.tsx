@@ -21,45 +21,61 @@ const AptosJourneyCard: React.FC = () => {
     setLoading(true);
 
     try {
-      // ✅ 1. Fetch transactions
-      const txRes = await axios.get(
-        `https://fullnode.mainnet.aptoslabs.com/v1/accounts/${address}/transactions?limit=100`,
-        { headers: { Accept: "application/json" } },
-      );
-
-      const txs = txRes.data;
-      if (!Array.isArray(txs) || txs.length === 0) {
-        setError("No transactions found for this address.");
-        setJourney(null);
-        return;
+      const query = `
+      query GetAccountData($address: String!) {
+        account_transaction_aggregate(where: {account_address: {_eq: $address}}) {
+          aggregate { count }
+        }
+        current_token_ownerships_v2_aggregate(where: {owner_address: {_eq: $address}}) {
+          aggregate { count }
+        }
+        account_transactions(
+          where: {account_address: {_eq: $address}},
+          order_by: {timestamp: asc},
+          limit: 1
+        ) {
+          timestamp
+        }
       }
+    `;
 
-      // ✅ 2. Convert microseconds → ms
-      const firstTx = txs[txs.length - 1];
-      const firstDate = new Date(Number(firstTx.timestamp) / 1_000_000).toDateString();
-
-      // ✅ 3. Fetch NFTs
-      const nftRes = await axios.get(
-        `https://fullnode.mainnet.aptoslabs.com/v1/accounts/${address}/current_token_ownerships?limit=200`,
-        { headers: { Accept: "application/json" } },
+      const res = await axios.post(
+        "https://indexer.mainnet.aptoslabs.com/v1/graphql",
+        { query, variables: { address } },
+        { headers: { "Content-Type": "application/json" } },
       );
 
-      const nftCount = Array.isArray(nftRes.data) ? nftRes.data.length : 0;
+      const data = res.data.data;
 
-      // ✅ 4. Save results
+      const totalTxs = data.account_transaction_aggregate.aggregate.count;
+      const nftCount = data.current_token_ownerships_v2_aggregate.aggregate.count;
+      const firstTx = data.account_transactions[0]?.timestamp || Date.now().toString();
+      const firstDate = new Date(Number(firstTx) / 1000).toDateString();
+
       setJourney({
         address,
-        totalTxs: txs.length,
+        totalTxs,
         firstDate,
         nftCount,
       });
     } catch (err: any) {
       console.error("API error:", err.message);
-      setError("Could not fetch data from Aptos API. Try again later.");
+      setError("Could not fetch data from Aptos Indexer. Try again later.");
       setJourney(null);
     } finally {
       setLoading(false);
     }
+  };
+
+  const downloadCard = () => {
+    const card = document.getElementById("journey-card");
+    if (!card) return;
+    html2canvas(card).then((canvas) => {
+      const link = document.createElement("a");
+      link.download = "aptos-journey-card.png";
+      link.href = canvas.toDataURL();
+      link.click();
+    });
   };
 
   return (
