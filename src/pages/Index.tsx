@@ -1,16 +1,23 @@
 import React, { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Wallet, Coins, Activity } from "lucide-react";
+import { Loader2, Wallet, Coins, Activity, Image as ImageIcon } from "lucide-react";
 
 interface AccountData {
   address: string;
   aptBalance: string;
+  stakedApt: string;
 }
 
 interface Token {
   name: string;
   symbol: string;
   balance: string;
+}
+
+interface NFT {
+  name: string;
+  collection: string;
+  image: string;
 }
 
 interface Transaction {
@@ -23,11 +30,13 @@ interface Transaction {
 interface AptosData {
   account: AccountData;
   tokens: Token[];
+  nfts: NFT[];
   activity: Transaction[];
 }
 
 export default function IndexPage() {
   const [address, setAddress] = useState("");
+  const [network, setNetwork] = useState<"mainnet" | "testnet">("mainnet");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState<AptosData | null>(null);
@@ -46,7 +55,7 @@ export default function IndexPage() {
       const { data: responseData, error: functionError } = await supabase.functions.invoke(
         'aptos',
         {
-          body: { address: address.trim() },
+          body: { address: address.trim(), network },
         }
       );
 
@@ -81,30 +90,54 @@ export default function IndexPage() {
         </h1>
 
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6 border border-gray-200">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <input
-              type="text"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Enter Aptos wallet address (0x...)"
-              className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-gray-900"
-              disabled={loading}
-            />
-            <button
-              onClick={loadStats}
-              disabled={loading || !address.trim()}
-              className="px-6 py-3 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-medium"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                "Load Stats"
-              )}
-            </button>
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setNetwork("mainnet")}
+                className={`px-4 py-2 rounded-lg font-medium transition ${
+                  network === "mainnet"
+                    ? "bg-emerald-500 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                Mainnet
+              </button>
+              <button
+                onClick={() => setNetwork("testnet")}
+                className={`px-4 py-2 rounded-lg font-medium transition ${
+                  network === "testnet"
+                    ? "bg-emerald-500 text-white"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                }`}
+              >
+                Testnet
+              </button>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Enter Aptos wallet address (0x...)"
+                className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-gray-900"
+                disabled={loading}
+              />
+              <button
+                onClick={loadStats}
+                disabled={loading || !address.trim()}
+                className="px-6 py-3 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-medium"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  "Load Stats"
+                )}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -130,9 +163,15 @@ export default function IndexPage() {
                   <p className="font-mono text-xs break-all text-gray-900">{data.account.address}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">APT Balance</p>
+                  <p className="text-sm text-gray-600">APT Balance (Liquid)</p>
                   <p className="text-xl font-bold text-emerald-600">{data.account.aptBalance} APT</p>
                 </div>
+                {data.account.stakedApt !== '0' && (
+                  <div>
+                    <p className="text-sm text-gray-600">Staked APT</p>
+                    <p className="text-lg font-semibold text-blue-600">{data.account.stakedApt} APT</p>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-gray-400">Enter an address and click "Load Stats"</p>
@@ -204,6 +243,46 @@ export default function IndexPage() {
                 </div>
               ) : (
                 <p className="text-gray-400">No recent transactions</p>
+              )
+            ) : (
+              <p className="text-gray-400">Enter an address and click "Load Stats"</p>
+            )}
+          </div>
+
+          {/* NFTs Card */}
+          <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <div className="flex items-center gap-2 mb-4">
+              <ImageIcon className="w-5 h-5 text-orange-600" />
+              <h2 className="text-lg font-semibold text-gray-800">NFTs</h2>
+            </div>
+            {loading ? (
+              <p className="text-gray-500">Loading...</p>
+            ) : data?.nfts ? (
+              data.nfts.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  {data.nfts.map((nft, idx) => (
+                    <div key={idx} className="border border-gray-200 rounded-lg p-2">
+                      <div className="aspect-square bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
+                        {nft.image ? (
+                          <img 
+                            src={nft.image} 
+                            alt={nft.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23ddd"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999" font-size="14">No Image</text></svg>';
+                            }}
+                          />
+                        ) : (
+                          <ImageIcon className="w-8 h-8 text-gray-400" />
+                        )}
+                      </div>
+                      <p className="text-xs font-medium text-gray-900 truncate">{nft.name}</p>
+                      <p className="text-xs text-gray-500 truncate">{nft.collection}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-400">No NFTs found</p>
               )
             ) : (
               <p className="text-gray-400">Enter an address and click "Load Stats"</p>
