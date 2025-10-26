@@ -45,8 +45,18 @@ const AptosJourneyCard: React.FC = () => {
         { headers: { "Content-Type": "application/json" } },
       );
 
+      console.log("API Response:", res.data);
+
+      // Check if response has errors
+      if (res.data?.errors) {
+        const errorMsg = res.data.errors[0]?.message || "GraphQL query failed";
+        console.error("GraphQL errors:", res.data.errors);
+        throw new Error(errorMsg);
+      }
+
       // Check if response has the expected structure
       if (!res.data?.data) {
+        console.error("Unexpected response structure:", res.data);
         throw new Error("Invalid API response structure");
       }
 
