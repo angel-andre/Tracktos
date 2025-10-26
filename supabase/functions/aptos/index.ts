@@ -84,45 +84,112 @@ serve(async (req) => {
 
     // Parse tokens and APT balance from resources
     let aptBalance = '0';
+    let stakedApt = '0';
     const tokens: Array<{ name: string; symbol: string; balance: string }> = [];
 
     console.log('Parsing resources for coin data...');
     for (const resource of resources) {
       if (typeof resource?.type === 'string') {
-        // Log all CoinStore resources we find
-        if (resource.type.includes('CoinStore')) {
-          console.log('Found CoinStore:', resource.type);
-          console.log('  Raw value:', resource.data?.coin?.value);
-        }
-
+        
+        // Check for liquid APT in CoinStore
         if (resource.type.includes('::coin::CoinStore<')) {
-          // Extract coin type from the full type string
           const match = resource.type.match(/::coin::CoinStore<(.+)>$/);
           if (match) {
             const coinType = match[1];
             const raw = resource.data?.coin?.value || '0';
-            
-            console.log('Processing coin type:', coinType, 'raw value:', raw);
             
             if (raw !== '0') {
               const balance = formatUnits(String(raw), 8);
               
               if (coinType.includes('aptos_coin::AptosCoin') || coinType.includes('0x1::aptos_coin::AptosCoin')) {
                 aptBalance = balance;
-                console.log('✓ APT balance set to:', aptBalance);
+                console.log('✓ Liquid APT found:', aptBalance);
               } else {
                 const symbol = coinType.split('::').pop() || 'Unknown';
                 const name = symbol;
                 tokens.push({ name, symbol, balance });
-                console.log('✓ Token added:', symbol, 'balance:', balance);
+                console.log('✓ Coin token:', symbol, 'balance:', balance);
               }
             }
+          }
+        }
+
+        // Check for staked APT
+        if (resource.type === '0x1::stake::StakePool') {
+          const active = resource.data?.active?.value || '0';
+          const pending_active = resource.data?.pending_active?.value || '0';
+          const pending_inactive = resource.data?.pending_inactive?.value || '0';
+          
+          const totalStaked = (BigInt(active) + BigInt(pending_active) + BigInt(pending_inactive)).toString();
+          if (totalStaked !== '0') {
+            stakedApt = formatUnits(totalStaked, 8);
+            console.log('✓ Staked APT found:', stakedApt);
+          }
+        }
+
+        // Check for delegation
+        if (resource.type === '0x1::delegation_pool::DelegationPool' || 
+            resource.type.includes('::delegation_pool::')) {
+          const delegated = resource.data?.active_shares?.value || '0';
+          if (delegated !== '0') {
+            const delegatedFormatted = formatUnits(String(delegated), 8);
+            stakedApt = stakedApt === '0' ? delegatedFormatted : 
+              formatUnits((BigInt(stakedApt.replace('.', '')) + BigInt(delegated)).toString(), 8);
+            console.log('✓ Delegated APT found:', delegatedFormatted);
+          }
+        }
+
+        // Check for Fungible Asset balances (FA standard)
+        if (resource.type === '0x1::fungible_asset::FungibleStore' || 
+            resource.type.includes('::fungible_asset::FungibleStore')) {
+          const balance_raw = resource.data?.balance || '0';
+          const metadata_addr = resource.data?.metadata?.inner || resource.data?.metadata;
+          
+          if (balance_raw !== '0' && metadata_addr) {
+            // Try to get metadata for this FA
+            const symbol = metadata_addr.toString().slice(0, 10) + '...';
+            const balance = formatUnits(String(balance_raw), 8);
+            tokens.push({ 
+              name: `FA-${symbol}`, 
+              symbol: `FA-${symbol}`, 
+              balance 
+            });
+            console.log('✓ FA token found:', symbol, 'balance:', balance);
+          }
+        }
+
+        // Check for primary fungible store
+        if (resource.type.includes('::primary_fungible_store::PrimaryStore')) {
+          const balance_raw = resource.data?.balance || '0';
+          if (balance_raw !== '0') {
+            const balance = formatUnits(String(balance_raw), 8);
+            const assetMatch = resource.type.match(/PrimaryStore<(.+)>$/);
+            const assetType = assetMatch ? assetMatch[1].split('::').pop() : 'Unknown';
+            tokens.push({ 
+              name: assetType, 
+              symbol: assetType, 
+              balance 
+            });
+            console.log('✓ Primary FA store found:', assetType, 'balance:', balance);
           }
         }
       }
     }
 
-    console.log('Final APT balance:', aptBalance);
+    // Combine liquid + staked APT for total
+    const totalApt = stakedApt === '0' ? aptBalance : 
+      formatUnits(
+        (BigInt((parseFloat(aptBalance) * 100000000).toFixed(0)) + 
+         BigInt((parseFloat(stakedApt) * 100000000).toFixed(0))).toString(), 
+        8
+      );
+
+    console.log('Final APT (liquid):', aptBalance);
+    console.log('Final APT (staked):', stakedApt);
+    console.log('Final APT (total):', totalApt);
+    console.log('Final APT (liquid):', aptBalance);
+    console.log('Final APT (staked):', stakedApt);
+    console.log('Final APT (total):', totalApt);
     console.log('Total tokens found:', tokens.length);
 
     // Sort tokens by numeric balance desc and get top 5
@@ -155,7 +222,7 @@ serve(async (req) => {
     }
 
     console.log('Returning response with:', {
-      aptBalance,
+      aptBalance: totalApt,
       tokensCount: topTokens.length,
       activityCount: activity.length
     });
@@ -163,7 +230,7 @@ serve(async (req) => {
     const response: AptosResponse = {
       account: {
         address,
-        aptBalance
+        aptBalance: totalApt
       },
       tokens: topTokens,
       activity
