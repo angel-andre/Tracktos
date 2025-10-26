@@ -45,11 +45,17 @@ const AptosJourneyCard: React.FC = () => {
         { headers: { "Content-Type": "application/json" } },
       );
 
+      // Check if response has the expected structure
+      if (!res.data?.data) {
+        throw new Error("Invalid API response structure");
+      }
+
       const data = res.data.data;
 
-      const totalTxs = data.account_transaction_aggregate.aggregate.count;
-      const nftCount = data.current_token_ownerships_v2_aggregate.aggregate.count;
-      const firstTx = data.account_transactions[0]?.timestamp || Date.now().toString();
+      // Safely access nested properties with optional chaining and defaults
+      const totalTxs = data.account_transaction_aggregate?.aggregate?.count ?? 0;
+      const nftCount = data.current_token_ownerships_v2_aggregate?.aggregate?.count ?? 0;
+      const firstTx = data.account_transactions?.[0]?.timestamp || Date.now().toString();
       const firstDate = new Date(Number(firstTx) / 1000).toDateString();
 
       setJourney({
