@@ -45,17 +45,22 @@ serve(async (req) => {
     console.log(`Fetching data for address: ${address}`);
 
     // Fetch account coins/tokens
+    console.log('Calling Aptos API for resources...');
     const coinsResponse = await fetch(
       `https://api.mainnet.aptoslabs.com/v1/accounts/${address}/resources`,
       { headers: { 'Accept': 'application/json' } }
     );
 
+    console.log('Resources API response status:', coinsResponse.status);
+
     if (!coinsResponse.ok) {
-      console.error('Coins API error:', coinsResponse.status, await coinsResponse.text());
+      const errorText = await coinsResponse.text();
+      console.error('Coins API error:', coinsResponse.status, errorText);
       throw new Error('Failed to fetch account resources');
     }
 
     const resources = await coinsResponse.json();
+    console.log('Resources fetched:', resources.length, 'items');
     
     // Extract APT balance
     let aptBalance = "0";
@@ -66,6 +71,9 @@ serve(async (req) => {
     if (coinStoreResource) {
       const rawBalance = coinStoreResource.data?.coin?.value || "0";
       aptBalance = (parseInt(rawBalance) / 100000000).toFixed(2);
+      console.log('APT balance found:', aptBalance);
+    } else {
+      console.log('No APT balance found in resources');
     }
 
     // Extract fungible assets
@@ -89,15 +97,19 @@ serve(async (req) => {
     });
 
     // Fetch recent transactions
+    console.log('Calling Aptos API for transactions...');
     const txResponse = await fetch(
       `https://api.mainnet.aptoslabs.com/v1/accounts/${address}/transactions?limit=5`,
       { headers: { 'Accept': 'application/json' } }
     );
 
+    console.log('Transactions API response status:', txResponse.status);
+
     let activity: Array<{ hash: string; type: string; success: boolean; timestamp: string }> = [];
 
     if (txResponse.ok) {
       const transactions = await txResponse.json();
+      console.log('Transactions fetched:', transactions.length);
       
       activity = transactions.map((tx: any) => ({
         hash: tx.hash || "unknown",
@@ -108,6 +120,12 @@ serve(async (req) => {
     } else {
       console.warn('Transactions API warning:', txResponse.status);
     }
+
+    console.log('Returning response with:', {
+      aptBalance,
+      tokensCount: tokens.length,
+      activityCount: activity.length
+    });
 
     const response: AptosResponse = {
       account: {
