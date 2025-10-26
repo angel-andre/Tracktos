@@ -21,44 +21,41 @@ const AptosJourneyCard: React.FC = () => {
     setLoading(true);
 
     try {
-      // Fetch up to 1000 transactions
-      const txRes = await axios.get(`https://api.mainnet.aptoslabs.com/v1/accounts/${address}/transactions?limit=1000`);
+      // ✅ 1. Fetch transactions safely
+      const txRes = await axios.get(`https://api.mainnet.aptoslabs.com/v1/accounts/${address}/transactions?limit=100`, {
+        headers: { Accept: "application/json" },
+      });
+
       const txs = txRes.data;
 
-      if (!txs || txs.length === 0) {
+      if (!Array.isArray(txs) || txs.length === 0) {
         setError("No transactions found for this address.");
         setJourney(null);
         return;
       }
 
-      // Total transactions
-      const totalTxs = txs.length;
+      // ✅ 2. Parse timestamp properly (microseconds → milliseconds)
+      const firstTx = txs[txs.length - 1];
+      const firstDate = new Date(Number(firstTx.timestamp) / 1_000_000).toDateString();
 
-      // Fix microsecond timestamp -> milliseconds
-      const oldestTx = txs[txs.length - 1];
-      const microTs = Number(oldestTx.timestamp);
-      const firstDate = new Date(microTs / 1_000_000).toDateString();
-
-      // Fetch NFTs owned
+      // ✅ 3. Fetch NFT ownerships
       const nftRes = await axios.get(
-        `https://api.mainnet.aptoslabs.com/v1/accounts/${address}/current_token_ownerships?limit=1000`,
+        `https://api.mainnet.aptoslabs.com/v1/accounts/${address}/current_token_ownerships?limit=200`,
+        { headers: { Accept: "application/json" } },
       );
 
-      const ownedNfts = Array.isArray(nftRes.data)
-        ? nftRes.data.filter((nft: any) => nft.current_token_data?.metadata_uri)
-        : [];
+      const nftCount = Array.isArray(nftRes.data) ? nftRes.data.length : 0;
 
-      const nftCount = ownedNfts.length;
-
+      // ✅ 4. Set card data
       setJourney({
         address,
-        totalTxs,
+        totalTxs: txs.length,
         firstDate,
         nftCount,
       });
-    } catch (err) {
-      console.error(err);
-      setError("Error fetching data. Please verify the wallet address.");
+    } catch (err: any) {
+      console.error("API error:", err.response?.status, err.response?.data);
+      setError("Could not fetch data from Aptos API. Try again later.");
       setJourney(null);
     } finally {
       setLoading(false);
