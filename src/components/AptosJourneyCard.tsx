@@ -21,32 +21,32 @@ const AptosJourneyCard: React.FC = () => {
     setLoading(true);
 
     try {
-      // ✅ 1. Fetch transactions safely
-      const txRes = await axios.get(`https://api.mainnet.aptoslabs.com/v1/accounts/${address}/transactions?limit=100`, {
-        headers: { Accept: "application/json" },
-      });
+      // ✅ 1. Fetch transactions
+      const txRes = await axios.get(
+        `https://fullnode.mainnet.aptoslabs.com/v1/accounts/${address}/transactions?limit=100`,
+        { headers: { Accept: "application/json" } },
+      );
 
       const txs = txRes.data;
-
       if (!Array.isArray(txs) || txs.length === 0) {
         setError("No transactions found for this address.");
         setJourney(null);
         return;
       }
 
-      // ✅ 2. Parse timestamp properly (microseconds → milliseconds)
+      // ✅ 2. Convert microseconds → ms
       const firstTx = txs[txs.length - 1];
       const firstDate = new Date(Number(firstTx.timestamp) / 1_000_000).toDateString();
 
-      // ✅ 3. Fetch NFT ownerships
+      // ✅ 3. Fetch NFTs
       const nftRes = await axios.get(
-        `https://api.mainnet.aptoslabs.com/v1/accounts/${address}/current_token_ownerships?limit=200`,
+        `https://fullnode.mainnet.aptoslabs.com/v1/accounts/${address}/current_token_ownerships?limit=200`,
         { headers: { Accept: "application/json" } },
       );
 
       const nftCount = Array.isArray(nftRes.data) ? nftRes.data.length : 0;
 
-      // ✅ 4. Set card data
+      // ✅ 4. Save results
       setJourney({
         address,
         totalTxs: txs.length,
@@ -54,23 +54,12 @@ const AptosJourneyCard: React.FC = () => {
         nftCount,
       });
     } catch (err: any) {
-      console.error("API error:", err.response?.status, err.response?.data);
+      console.error("API error:", err.message);
       setError("Could not fetch data from Aptos API. Try again later.");
       setJourney(null);
     } finally {
       setLoading(false);
     }
-  };
-
-  const downloadCard = () => {
-    const card = document.getElementById("journey-card");
-    if (!card) return;
-    html2canvas(card).then((canvas) => {
-      const link = document.createElement("a");
-      link.download = "aptos-journey-card.png";
-      link.href = canvas.toDataURL();
-      link.click();
-    });
   };
 
   return (
