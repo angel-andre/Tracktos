@@ -97,23 +97,14 @@ serve(async (req) => {
       return parseFloat(v) / divisor;
     };
 
-    // Helper: map asset type/symbol to CoinGecko ID (prefer canonical mappings)
+    // Helper: map asset type/symbol to pricing source
     const getCoinGeckoId = (symbol: string, assetType: string): string | null => {
-      // Canonical APT on Aptos
+      // Only map canonical APT on Aptos
       if (assetType === '0x1::aptos_coin::AptosCoin' || symbol === 'APT') return 'aptos';
-      // Fallback by common symbols (may include multiple issuers on Aptos)
-      const map: Record<string, string> = {
-        'USDC': 'usd-coin',
-        'USDT': 'tether',
-        'WETH': 'weth',
-        'BTC': 'bitcoin',
-        'SOL': 'solana',
-        'GUI': 'gui-inu',
-        'CAKE': 'pancakeswap-token',
-        'WBTC': 'wrapped-bitcoin',
-      };
-      return map[symbol] || null;
+      return null; // all other non-stables are ignored to avoid mispricing by symbol
     };
+
+    const isStableUsd = (symbol: string): boolean => symbol === 'USDC' || symbol === 'USDT';
 
     // Process current balances
     const rawTokenBalances: Array<{ symbol: string; balance: number; assetType: string; coinGeckoId: string } > = [];
@@ -124,18 +115,27 @@ serve(async (req) => {
       const decimals = item.metadata?.decimals ?? 8;
       const balance = formatUnits(item.amount, decimals);
       const assetType = item.asset_type as string;
-      const cgId = getCoinGeckoId(symbol, assetType);
+      
+      // Prefer exact APT mapping; treat known stables as $1 without CoinGecko
+      const cgId = getCoinGeckoId(symbol, assetType) || (isStableUsd(symbol) ? 'STABLE_USD' : null);
       
       if (balance > 0 && cgId) {
         rawTokenBalances.push({ symbol, balance, assetType, coinGeckoId: cgId });
       }
     }
 
-    // Deduplicate by CoinGecko ID: keep the LARGEST balance to avoid double-counting wrappers/duplicates
+    // Deduplicate by pricing source:
+    // - For STABLE_USD, SUM balances across USDC/USDT
+    // - For other assets (e.g., APT), keep the LARGEST balance to avoid double-counting wrappers
     const aggregated = new Map<string, { symbol: string; balance: number; assetType: string; coinGeckoId: string }>();
     for (const t of rawTokenBalances) {
       const existing = aggregated.get(t.coinGeckoId);
-      if (!existing || t.balance > existing.balance) {
+      if (!existing) {
+        aggregated.set(t.coinGeckoId, { ...t });
+      } else if (t.coinGeckoId === 'STABLE_USD') {
+        existing.balance += t.balance;
+        aggregated.set(t.coinGeckoId, existing);
+      } else if (t.balance > existing.balance) {
         aggregated.set(t.coinGeckoId, { ...t });
       }
     }
@@ -173,6 +173,12 @@ serve(async (req) => {
     const priceMaps = await Promise.all(
       uniqueTokenBalances.map(async (token) => {
         try {
+          if (token.coinGeckoId === 'STABLE_USD') {
+            const map: Record<string, number> = {};
+            for (const ds of dateList) map[ds] = 1; // $1 peg for stables
+            return { id: token.coinGeckoId, prices: map };
+          }
+
           const url = `https://api.coingecko.com/api/v3/coins/${token.coinGeckoId}/market_chart?vs_currency=usd&days=${days + 1}&interval=daily`;
           const resp = await fetch(url);
           if (!resp.ok) {
