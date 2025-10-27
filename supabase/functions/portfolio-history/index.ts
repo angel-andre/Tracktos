@@ -93,9 +93,8 @@ serve(async (req) => {
     };
 
     // Helper: identify APT and parse Aptos contract address from asset type
-    const getCoinGeckoIdIfApt = (symbol: string, assetType: string): string | null => {
-      if (assetType === '0x1::aptos_coin::AptosCoin' || symbol === 'APT') return 'aptos';
-      return null;
+    const getCoinGeckoIdIfApt = (_symbol: string, assetType: string): string | null => {
+      return assetType === '0x1::aptos_coin::AptosCoin' ? 'aptos' : null;
     };
     const normalizeAptosAssetType = (assetType: string): string | null => {
       const t = String(assetType || '').trim().toLowerCase();
@@ -396,6 +395,20 @@ serve(async (req) => {
         } else {
           console.log('simple/price fetch failed:', resp.status);
         }
+      }
+
+      // Secondary price source for APT: Binance APT/USDT, to improve accuracy
+      try {
+        const bin = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=APTUSDT');
+        if (bin.ok) {
+          const b = await bin.json();
+          const aptPrice = parseFloat(b?.price);
+          if (!Number.isNaN(aptPrice) && aptPrice > 0) {
+            nowPrices.set('aptos', aptPrice);
+          }
+        }
+      } catch (_e) {
+        // ignore secondary source failure
       }
 
       const gotLive = nowPrices.size > 0;
