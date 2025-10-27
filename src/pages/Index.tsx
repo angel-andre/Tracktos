@@ -212,19 +212,14 @@ export default function IndexPage() {
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <AccountCard 
-                  data={data?.account || null} 
-                  loading={loading}
-                  transactionCount={data?.totalTransactionCount || 0}
-                  nftCount={data?.totalNftCount || 0}
-                  tokenCount={data?.tokens?.length || 0}
-                  sentimentReasons={data?.sentimentReasons || []}
-                />
-                <div className="space-y-6">
-                  <ActivityCard activity={data?.activity || null} loading={loading} />
-                </div>
-              </div>
+              <AccountCard 
+                data={data?.account || null} 
+                loading={loading}
+                transactionCount={data?.totalTransactionCount || 0}
+                nftCount={data?.totalNftCount || 0}
+                tokenCount={data?.tokens?.length || 0}
+                sentimentReasons={data?.sentimentReasons || []}
+              />
               {data && (
                 <PortfolioChartCard address={address} currentTotalUsdValue={data.totalUsdValue} />
               )}
