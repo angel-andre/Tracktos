@@ -2,6 +2,7 @@ import React from "react";
 import { ImageIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatNumber } from "@/lib/formatters";
 
 interface NFT {
@@ -179,6 +180,49 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
 };
 
 export function NFTsCard({ nfts, loading }: NFTsCardProps) {
+  const [selectedCollection, setSelectedCollection] = React.useState<string>("all");
+  const [sortBy, setSortBy] = React.useState<string>("default");
+
+  const uniqueCollections = React.useMemo(() => {
+    if (!nfts) return [];
+    const collections = new Set(nfts.map(nft => nft.collection));
+    return Array.from(collections).sort();
+  }, [nfts]);
+
+  const filteredAndSortedNFTs = React.useMemo(() => {
+    if (!nfts) return [];
+    
+    let result = [...nfts];
+    
+    // Filter by collection
+    if (selectedCollection !== "all") {
+      result = result.filter(nft => nft.collection === selectedCollection);
+    }
+    
+    // Sort
+    switch (sortBy) {
+      case "price-high":
+        result.sort((a, b) => {
+          const priceA = parseFloat(a.price?.replace(/[^0-9.-]+/g, "") || "0");
+          const priceB = parseFloat(b.price?.replace(/[^0-9.-]+/g, "") || "0");
+          return priceB - priceA;
+        });
+        break;
+      case "price-low":
+        result.sort((a, b) => {
+          const priceA = parseFloat(a.price?.replace(/[^0-9.-]+/g, "") || "0");
+          const priceB = parseFloat(b.price?.replace(/[^0-9.-]+/g, "") || "0");
+          return priceA - priceB;
+        });
+        break;
+      case "name":
+        result.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+    }
+    
+    return result;
+  }, [nfts, selectedCollection, sortBy]);
+
   if (loading) {
     return (
       <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg">
@@ -217,8 +261,37 @@ export function NFTsCard({ nfts, loading }: NFTsCardProps) {
       </CardHeader>
       <CardContent>
         {nfts && nfts.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {nfts.map((nft, idx) => (
+          <>
+            <div className="flex justify-between mb-4 gap-4">
+              <Select value={selectedCollection} onValueChange={setSelectedCollection}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Filter by Collection" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Collections</SelectItem>
+                  {uniqueCollections.map((collection) => (
+                    <SelectItem key={collection} value={collection}>
+                      {collection}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="Sort By" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Default Order</SelectItem>
+                  <SelectItem value="price-high">Purchase Price: High to Low</SelectItem>
+                  <SelectItem value="price-low">Purchase Price: Low to High</SelectItem>
+                  <SelectItem value="name">Name (A-Z)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {filteredAndSortedNFTs.map((nft, idx) => (
               <div 
                 key={idx} 
                 className="group border border-border/50 rounded-lg p-2 bg-secondary/20 hover:bg-secondary/40 hover:scale-105 transition-all duration-300 hover:shadow-lg"
@@ -240,8 +313,9 @@ export function NFTsCard({ nfts, loading }: NFTsCardProps) {
                   <p className="text-xs text-primary font-semibold mt-1">{formatNumber(nft.price, 2)}</p>
                 )}
               </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         ) : (
           <p className="text-muted-foreground text-center py-8">
             {nfts === null ? "Enter an address to view NFTs" : "No NFTs found"}
