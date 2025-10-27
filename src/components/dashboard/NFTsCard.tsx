@@ -71,17 +71,47 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
   const [i, setI] = React.useState(0);
   const [loaded, setLoaded] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
+  const [finalSrc, setFinalSrc] = React.useState<string | null>(null);
   const src = srcs[i];
 
   React.useEffect(() => {
     setLoaded(false);
     setFailed(false);
+    setFinalSrc(null);
     let cancelled = false;
+
+    const loadImage = async () => {
+      if (!src) return;
+
+      try {
+        if (src.endsWith('.json')) {
+          const response = await fetch(src);
+          const metadata = await response.json();
+          const imageUrl = metadata.image || metadata.image_url || metadata.uri;
+          if (imageUrl && !cancelled) {
+            const candidates = buildImageCandidates(imageUrl);
+            setFinalSrc(candidates[0] || imageUrl);
+          } else if (!cancelled) {
+            setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
+          }
+        } else {
+          setFinalSrc(src);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
+        }
+      }
+    };
+
+    loadImage();
+
     const timer = setTimeout(() => {
       if (!loaded && !cancelled) {
         setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
       }
-    }, 5000);
+    }, 8000);
+
     return () => {
       cancelled = true;
       clearTimeout(timer);
@@ -102,9 +132,13 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
     return <ImageIcon className="w-8 h-8 text-muted-foreground" />;
   }
 
+  if (!finalSrc) {
+    return <div className="w-full h-full animate-pulse bg-muted/30" />;
+  }
+
   return (
     <img
-      src={src}
+      src={finalSrc}
       alt={alt}
       className={className}
       loading="lazy"
