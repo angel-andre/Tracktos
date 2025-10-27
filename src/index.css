@@ -58,6 +58,11 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html {
+    background: var(--gradient-bg);
+    background-attachment: fixed;
+  }
+
   body {
     @apply bg-background text-foreground;
     background: var(--gradient-bg);
