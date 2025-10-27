@@ -258,25 +258,66 @@ console.log(`Selected ${uniqueTokenBalances.length} tokens:`, uniqueTokenBalance
     // Fetch market charts for each token in parallel (daily prices)
     const priceMaps = await Promise.all(
       uniqueTokenBalances.map(async (token) => {
-        try {
-          const url = `https://api.coingecko.com/api/v3/coins/${token.coinGeckoId}/market_chart?vs_currency=usd&days=${days + 1}&interval=daily`;
-          const resp = await fetch(url);
-          if (!resp.ok) {
-            console.log(`${token.symbol}: market_chart not available (${resp.status})`);
-            return { id: token.coinGeckoId, prices: {} as Record<string, number> };
-          }
-          const data = await resp.json();
-          const series: Array<[number, number]> = data.prices || [];
+        const id = token.coinGeckoId;
+        const symbol = token.symbol;
+        // Helper to build YYYY-MM-DD map from [ms, price] arrays
+        const mapFromSeries = (series: Array<[number, number]>) => {
           const map: Record<string, number> = {};
           for (const [ts, price] of series) {
             const ds = new Date(ts).toISOString().split('T')[0];
             map[ds] = price;
           }
-          console.log(`${token.symbol}: loaded ${Object.keys(map).length} price points`);
-          return { id: token.coinGeckoId, prices: map };
+          return map;
+        };
+
+        try {
+          // 1) Try CoinGecko daily market_chart
+          const cgUrl = `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=${days + 1}&interval=daily`;
+          const cgResp = await fetch(cgUrl);
+          if (cgResp.ok) {
+            const data = await cgResp.json();
+            const series: Array<[number, number]> = data.prices || [];
+            const map = mapFromSeries(series);
+            if (Object.keys(map).length > 0) {
+              console.log(`${symbol}: loaded ${Object.keys(map).length} price points from CoinGecko`);
+              return { id, prices: map };
+            }
+          } else {
+            console.log(`${symbol}: market_chart not available (${cgResp.status})`);
+          }
+
+          // 2) Special robust fallback for APT using Binance klines
+          if (id === 'aptos') {
+            try {
+              const limit = Math.min(days + 2, 1000);
+              const binUrl = `https://api.binance.com/api/v3/klines?symbol=APTUSDT&interval=1d&limit=${limit}`;
+              const binResp = await fetch(binUrl);
+              if (binResp.ok) {
+                const klines: any[] = await binResp.json();
+                const map: Record<string, number> = {};
+                for (const k of klines) {
+                  const openTime = k[0];
+                  const close = parseFloat(k[4]);
+                  const ds = new Date(openTime).toISOString().split('T')[0];
+                  map[ds] = close; // USDT ~ USD peg
+                }
+                if (Object.keys(map).length > 0) {
+                  console.log(`APT: loaded ${Object.keys(map).length} price points from Binance`);
+                  return { id, prices: map };
+                }
+              } else {
+                console.log(`Binance klines failed for APT: ${binResp.status}`);
+              }
+            } catch (e) {
+              console.log('Binance klines error for APT:', e);
+            }
+          }
+
+          // 3) Fallback to empty map
+          return { id, prices: {} as Record<string, number> };
         } catch (e) {
-          console.error(`Error fetching market_chart for ${token.symbol}:`, e);
-          return { id: token.coinGeckoId, prices: {} as Record<string, number> };
+          console.error(`Error fetching market_chart for ${symbol}:`, e);
+          return { id, prices: {} as Record<string, number> };
         }
       })
     );
@@ -323,8 +364,9 @@ console.log(`Selected ${uniqueTokenBalances.length} tokens:`, uniqueTokenBalance
             console.log('CG coins fallback error:', e);
           }
 
-          // Secondary fallback for APT if CoinGecko is rate-limited
+          // Secondary fallbacks for APT if CoinGecko is rate-limited
           if (!baseNowPrices.has('aptos')) {
+            // Try CoinCap current price
             try {
               const cc = await fetch('https://api.coincap.io/v2/assets/aptos');
               if (cc.ok) {
@@ -339,6 +381,25 @@ console.log(`Selected ${uniqueTokenBalances.length} tokens:`, uniqueTokenBalance
               }
             } catch (e2) {
               console.log('CoinCap APT base fetch error:', e2);
+            }
+          }
+
+          if (!baseNowPrices.has('aptos')) {
+            // Try Binance ticker (APTUSDT) as final fallback
+            try {
+              const bin = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=APTUSDT');
+              if (bin.ok) {
+                const j = await bin.json();
+                const p = Number(j?.price);
+                if (Number.isFinite(p) && p > 0) {
+                  baseNowPrices.set('aptos', p);
+                  console.log(`✓ Base price for APT via Binance: $${p}`);
+                }
+              } else {
+                console.log('Binance APT ticker failed:', bin.status);
+              }
+            } catch (e3) {
+              console.log('Binance APT ticker error:', e3);
             }
           }
         }
@@ -552,6 +613,25 @@ console.log(`Selected ${uniqueTokenBalances.length} tokens:`, uniqueTokenBalance
           }
         } catch (e) {
           console.log('CG coins fallback error:', e);
+        }
+      }
+
+      // Final fallback for APT live price via Binance if still missing
+      if (ids.includes('aptos') && !nowPrices.has('aptos')) {
+        try {
+          const bin = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=APTUSDT');
+          if (bin.ok) {
+            const j = await bin.json();
+            const p = Number(j?.price);
+            if (Number.isFinite(p) && p > 0) {
+              nowPrices.set('aptos', p);
+              console.log(`✓ Live price for aptos via Binance: $${p}`);
+            }
+          } else {
+            console.log('Binance ticker failed for APT live:', bin.status);
+          }
+        } catch (e) {
+          console.log('Binance APT live error:', e);
         }
       }
 
