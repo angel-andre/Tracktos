@@ -669,28 +669,29 @@ serve(async (req) => {
     let activeDays = 0;
     let totalGasSpent = '0';
     
-    // Fetch transactions for analysis (pagination to get more complete data)
+    // Fetch transactions for analysis (optimized: fewer, larger batches, parallel requests)
     let transactions: any[] = [];
-    let offset = 0;
-    const batchSize = 100;
-    const maxTransactionsToFetch = Math.min(totalTransactionCount, 10000); // Fetch up to 10k for accuracy
+    const batchSize = 500; // Larger batches = fewer requests
+    const maxTransactionsToFetch = Math.min(totalTransactionCount, 2000); // Reduced from 10k for speed
     
     console.log(`Fetching up to ${maxTransactionsToFetch} transactions for analysis...`);
     
-    while (offset < maxTransactionsToFetch) {
+    // Parallel batch fetching for speed
+    const numBatches = Math.ceil(maxTransactionsToFetch / batchSize);
+    const fetchPromises = [];
+    
+    for (let i = 0; i < numBatches; i++) {
+      const offset = i * batchSize;
       const txUrl = `${fullnodeBase}/accounts/${address}/transactions?start=${offset}&limit=${batchSize}`;
-      const txResp = await fetch(txUrl, { headers: { 'Accept': 'application/json' } });
-      
-      if (!txResp.ok) break;
-      
-      const txData = await txResp.json();
-      if (!Array.isArray(txData) || txData.length === 0) break;
-      
-      transactions.push(...txData);
-      offset += batchSize;
-      
-      if (txData.length < batchSize) break; // No more transactions
+      fetchPromises.push(
+        fetch(txUrl, { headers: { 'Accept': 'application/json' } })
+          .then(r => r.ok ? r.json() : [])
+          .catch(() => [])
+      );
     }
+    
+    const batchResults = await Promise.all(fetchPromises);
+    transactions = batchResults.flat().filter(tx => tx && typeof tx === 'object');
     
     console.log(`✓ Fetched ${transactions.length} transactions for analysis`);
     
