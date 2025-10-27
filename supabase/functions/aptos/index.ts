@@ -193,18 +193,18 @@ serve(async (req) => {
         console.log('CoinGecko error:', error);
       }
 
-      // For tokens not found in CoinGecko, try DexScreener
+      // For tokens not found in CoinGecko, try DexScreener IN PARALLEL
       const missingTokens = symbols.filter(s => !priceMap.has(s.toUpperCase()));
       
       if (missingTokens.length > 0) {
-        console.log('Fetching prices from DexScreener for missing tokens:', missingTokens.join(', '));
+        console.log('Fetching prices from DexScreener (parallel) for missing tokens:', missingTokens.join(', '));
         
-        for (const symbol of missingTokens) {
+        // Fetch all DexScreener prices concurrently
+        const dexPromises = missingTokens.map(async (symbol) => {
           const assetType = assetTypes[symbol];
-          if (!assetType) continue;
+          if (!assetType) return null;
 
           try {
-            // DexScreener API for Aptos tokens
             const dexUrl = `https://api.dexscreener.com/latest/dex/search?q=${symbol}%20aptos`;
             const response = await fetch(dexUrl);
             
@@ -212,7 +212,6 @@ serve(async (req) => {
               const data = await response.json();
               const pairs = data?.pairs || [];
               
-              // Find the most liquid pair with this token
               const aptPair = pairs.find((p: any) => 
                 p.chainId === 'aptos' && 
                 (p.baseToken?.symbol === symbol || p.quoteToken?.symbol === symbol) &&
@@ -221,8 +220,8 @@ serve(async (req) => {
               
               if (aptPair?.priceUsd) {
                 const price = parseFloat(aptPair.priceUsd);
-                priceMap.set(symbol.toUpperCase(), price);
                 console.log(`✓ Price for ${symbol} from DexScreener: $${price}`);
+                return { symbol: symbol.toUpperCase(), price };
               } else {
                 console.log(`⚠️ No price found for ${symbol} on DexScreener`);
               }
@@ -230,17 +229,24 @@ serve(async (req) => {
           } catch (error) {
             console.log(`Error fetching DexScreener price for ${symbol}:`, error);
           }
-        }
+          return null;
+        });
+
+        const dexResults = await Promise.all(dexPromises);
+        dexResults.forEach(result => {
+          if (result) {
+            priceMap.set(result.symbol, result.price);
+          }
+        });
       }
 
       return priceMap;
     };
 
-    // Helper to fetch historical prices (24h ago)
+    // Helper to fetch historical prices (24h ago) - PARALLELIZED
     const fetchHistoricalPrices = async (symbols: string[]): Promise<Map<string, number>> => {
       const priceMap = new Map<string, number>();
       
-      // CoinGecko coin IDs
       const coinGeckoIds: Record<string, string> = {
         'APT': 'aptos',
         'USDC': 'usd-coin',
@@ -253,46 +259,36 @@ serve(async (req) => {
         'WBTC': 'wrapped-bitcoin'
       };
 
-      console.log('Fetching 24h-ago prices for:', symbols.join(', '));
+      console.log('Fetching 24h-ago prices (parallel) for:', symbols.join(', '));
 
-      for (const symbol of symbols) {
+      // Fetch all historical prices concurrently
+      const historicalPromises = symbols.map(async (symbol) => {
         const sym = symbol.toUpperCase();
         const coinId = coinGeckoIds[sym];
-        let set = false;
 
-        // 1) Try CoinGecko market_chart (hourly points, first item ~24h ago)
+        // 1) Try CoinGecko market_chart
         if (coinId) {
           try {
             const url = `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=1&interval=hourly`;
-            console.log(`CG market_chart for ${sym}: ${url}`);
             const response = await fetch(url);
-            console.log(`CG market_chart ${sym} -> ${response.status}`);
             if (response.ok) {
               const data: any = await response.json();
               if (Array.isArray(data?.prices) && data.prices.length > 0) {
                 const price24hAgo = Number(data.prices[0][1]);
                 if (Number.isFinite(price24hAgo) && price24hAgo > 0) {
-                  priceMap.set(sym, price24hAgo);
                   console.log(`✓ CG market_chart 24h-ago ${sym}: $${price24hAgo}`);
-                  set = true;
+                  return { symbol: sym, price: price24hAgo };
                 }
               }
-            } else {
-              const t = await response.text().catch(() => '');
-              console.log(`CG market_chart failed for ${sym}: ${response.status} ${t.slice(0,120)}`);
             }
           } catch (err) {
             console.log(`CG market_chart error for ${sym}:`, err);
           }
-        }
 
-        // 2) Fallback: CoinGecko coins endpoint with 24h percent to back-calc
-        if (!set && coinId) {
+          // 2) Fallback: CoinGecko coins endpoint with 24h percent
           try {
             const url = `https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`;
-            console.log(`CG coins for ${sym}: ${url}`);
             const response = await fetch(url);
-            console.log(`CG coins ${sym} -> ${response.status}`);
             if (response.ok) {
               const data: any = await response.json();
               const current = Number(data?.market_data?.current_price?.usd);
@@ -300,55 +296,48 @@ serve(async (req) => {
               if (Number.isFinite(current) && Number.isFinite(pct)) {
                 const price24hAgo = current / (1 + pct / 100);
                 if (price24hAgo > 0) {
-                  priceMap.set(sym, price24hAgo);
                   console.log(`✓ CG coins back-calc 24h-ago ${sym}: $${price24hAgo}`);
-                  set = true;
+                  return { symbol: sym, price: price24hAgo };
                 }
               }
-            } else {
-              const t = await response.text().catch(() => '');
-              console.log(`CG coins failed for ${sym}: ${response.status} ${t.slice(0,120)}`);
             }
           } catch (err) {
             console.log(`CG coins error for ${sym}:`, err);
           }
         }
 
-        // 3) Fallback: DexScreener priceChange.h24 to back-calc
-        if (!set) {
-          try {
-            const dexUrl = `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(sym + ' aptos')}`;
-            console.log(`DexScreener for ${sym}: ${dexUrl}`);
-            const response = await fetch(dexUrl);
-            console.log(`DexScreener ${sym} -> ${response.status}`);
-            if (response.ok) {
-              const data: any = await response.json();
-              const pairs: any[] = Array.isArray(data?.pairs) ? data.pairs : [];
-              const aptPair = pairs.find((p: any) => p.chainId === 'aptos' && (p.baseToken?.symbol === sym || p.quoteToken?.symbol === sym) && p.priceUsd);
-              const priceUsdRaw = aptPair?.priceUsd;
-              const h24Raw = aptPair?.priceChange?.h24;
-              if (typeof priceUsdRaw === 'number' && isFinite(priceUsdRaw) && typeof h24Raw === 'number' && isFinite(h24Raw)) {
-                const price24hAgo = priceUsdRaw / (1 + h24Raw / 100);
-                if (price24hAgo > 0) {
-                  priceMap.set(sym, price24hAgo);
-                  console.log(`✓ Dex back-calc 24h-ago ${sym}: $${price24hAgo} (from priceUsd $${priceUsdRaw}, h24 ${h24Raw}%)`);
-                  set = true;
-                }
-              } else {
-                console.log(`DexScreener missing price or h24 for ${sym}`);
+        // 3) Fallback: DexScreener priceChange.h24
+        try {
+          const dexUrl = `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(sym + ' aptos')}`;
+          const response = await fetch(dexUrl);
+          if (response.ok) {
+            const data: any = await response.json();
+            const pairs: any[] = Array.isArray(data?.pairs) ? data.pairs : [];
+            const aptPair = pairs.find((p: any) => p.chainId === 'aptos' && (p.baseToken?.symbol === sym || p.quoteToken?.symbol === sym) && p.priceUsd);
+            const priceUsdRaw = aptPair?.priceUsd;
+            const h24Raw = aptPair?.priceChange?.h24;
+            if (typeof priceUsdRaw === 'number' && isFinite(priceUsdRaw) && typeof h24Raw === 'number' && isFinite(h24Raw)) {
+              const price24hAgo = priceUsdRaw / (1 + h24Raw / 100);
+              if (price24hAgo > 0) {
+                console.log(`✓ Dex back-calc 24h-ago ${sym}: $${price24hAgo}`);
+                return { symbol: sym, price: price24hAgo };
               }
-            } else {
-              const t = await response.text().catch(() => '');
-              console.log(`DexScreener failed for ${sym}: ${response.status} ${t.slice(0,120)}`);
             }
-          } catch (err) {
-            console.log(`DexScreener error for ${sym}:`, err);
           }
+        } catch (err) {
+          console.log(`DexScreener error for ${sym}:`, err);
         }
 
-        // small delay to be gentle with public APIs
-        await new Promise((r) => setTimeout(r, 120));
-      }
+        console.log(`⚠️ No 24h-ago price found for ${sym}`);
+        return null;
+      });
+
+      const results = await Promise.all(historicalPromises);
+      results.forEach(result => {
+        if (result) {
+          priceMap.set(result.symbol, result.price);
+        }
+      });
 
       console.log(`Fetched ${priceMap.size}/${symbols.length} 24h-ago prices.`);
       return priceMap;
@@ -541,11 +530,16 @@ serve(async (req) => {
       }
     }
 
-    // Fetch USD prices for all tokens
-    console.log('Fetching USD prices...');
+    // Fetch USD prices for all tokens (current AND historical in parallel)
+    console.log('Fetching USD prices (current + historical)...');
     const tokenSymbols = ['APT', ...tokens.map(t => t.symbol)];
     const allAssetTypes = { ...tokenAssetTypes, 'APT': '0x1::aptos_coin::AptosCoin' };
-    const priceMap = await fetchCoinPrices(tokenSymbols, allAssetTypes);
+    
+    // Run current and historical price fetching concurrently for speed
+    const [priceMap, historicalPriceMap] = await Promise.all([
+      fetchCoinPrices(tokenSymbols, allAssetTypes),
+      fetchHistoricalPrices(tokenSymbols)
+    ]);
     
     // Token logo URLs (common Aptos tokens)
     const logoUrls: Record<string, string> = {
@@ -590,9 +584,8 @@ serve(async (req) => {
     
     console.log(`✓ Total portfolio USD value: $${totalUsdValue.toFixed(2)}`);
 
-    // Calculate 24h change
+    // Calculate 24h change (using already-fetched historical prices)
     console.log('Calculating 24h portfolio change...');
-    const historicalPriceMap = await fetchHistoricalPrices(tokenSymbols);
     
     const aptPrice24hAgo = historicalPriceMap.get('APT') || aptPrice; // fallback to current if unavailable
     const aptUsdValue24hAgo = parseFloat(aptBalance) * aptPrice24hAgo;
