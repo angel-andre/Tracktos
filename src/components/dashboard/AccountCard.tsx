@@ -137,30 +137,48 @@ export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0,
             {/* Wallet Timeline Stats */}
             {(data.firstTransactionTimestamp || data.lastTransactionTimestamp) && (
               <div className="grid grid-cols-2 gap-4">
-                {data.firstTransactionTimestamp && (
-                  <div className="p-4 rounded-lg bg-secondary/20 border border-border/30">
-                    <p className="text-sm text-muted-foreground mb-1">Wallet Start Date</p>
-                    <p className="text-sm font-semibold text-foreground">
-                      {new Date(data.firstTransactionTimestamp).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric'
-                      })}
-                    </p>
-                  </div>
-                )}
-                {data.lastTransactionTimestamp && (
-                  <div className="p-4 rounded-lg bg-secondary/20 border border-border/30">
-                    <p className="text-sm text-muted-foreground mb-1">Last Transaction</p>
-                    <p className="text-sm font-semibold text-foreground">
-                      {new Date(data.lastTransactionTimestamp).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric'
-                      })}
-                    </p>
-                  </div>
-                )}
+                {data.firstTransactionTimestamp && (() => {
+                  // Parse timestamp - handle both microseconds and ISO format
+                  const timestamp = typeof data.firstTransactionTimestamp === 'string' && data.firstTransactionTimestamp.includes('T')
+                    ? data.firstTransactionTimestamp
+                    : parseInt(data.firstTransactionTimestamp) / 1000; // Convert microseconds to milliseconds
+                  const date = new Date(timestamp);
+                  const isValid = !isNaN(date.getTime());
+                  
+                  return (
+                    <div className="p-4 rounded-lg bg-secondary/20 border border-border/30">
+                      <p className="text-sm text-muted-foreground mb-1">Wallet Start Date</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {isValid ? date.toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric'
+                        }) : 'N/A'}
+                      </p>
+                    </div>
+                  );
+                })()}
+                {data.lastTransactionTimestamp && (() => {
+                  // Parse timestamp - handle both microseconds and ISO format
+                  const timestamp = typeof data.lastTransactionTimestamp === 'string' && data.lastTransactionTimestamp.includes('T')
+                    ? data.lastTransactionTimestamp
+                    : parseInt(data.lastTransactionTimestamp) / 1000; // Convert microseconds to milliseconds
+                  const date = new Date(timestamp);
+                  const isValid = !isNaN(date.getTime());
+                  
+                  return (
+                    <div className="p-4 rounded-lg bg-secondary/20 border border-border/30">
+                      <p className="text-sm text-muted-foreground mb-1">Last Transaction</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {isValid ? date.toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric'
+                        }) : 'N/A'}
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
