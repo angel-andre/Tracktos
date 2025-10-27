@@ -878,6 +878,19 @@ serve(async (req) => {
       typeCounts.set(txType, (typeCounts.get(txType) || 0) + 1);
     }
     
+    // Normalize daily series to include all dates up to today (UTC)
+    const existingKeys = Array.from(dailyCounts.keys()).sort();
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const startKey = existingKeys.length ? existingKeys[0] : todayKey;
+    const startDate = new Date(startKey + 'T00:00:00.000Z');
+    const endDate = new Date(todayKey + 'T00:00:00.000Z');
+
+    for (let d = new Date(startDate); d <= endDate; d.setUTCDate(d.getUTCDate() + 1)) {
+      const k = d.toISOString().slice(0, 10);
+      if (!dailyCounts.has(k)) dailyCounts.set(k, 0);
+      if (!dailyGas.has(k)) dailyGas.set(k, 0n);
+    }
+
     // Format heatmap data
     const activityHeatmap = Array.from(dailyCounts.entries())
       .map(([date, count]) => ({ date, count }))
@@ -889,7 +902,7 @@ serve(async (req) => {
       .map(([type, count]) => ({
         type,
         count,
-        percentage: Math.round((count / totalTyped) * 100)
+        percentage: totalTyped ? Math.round((count / totalTyped) * 100) : 0
       }))
       .sort((a, b) => b.count - a.count);
     
