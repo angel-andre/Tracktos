@@ -15,7 +15,7 @@ interface HistoricalDataPoint {
   value: number;
 }
 
-type Timeframe = '7D' | '30D' | '90D';
+type Timeframe = '7D' | '30D';
 
 export function PortfolioChartCard({ address, currentTotalUsdValue }: PortfolioChartCardProps) {
   const [timeframe, setTimeframe] = useState<Timeframe>('30D');
@@ -86,9 +86,6 @@ export function PortfolioChartCard({ address, currentTotalUsdValue }: PortfolioC
           </ToggleGroupItem>
           <ToggleGroupItem value="30D" className="text-xs px-3 py-1">
             30D
-          </ToggleGroupItem>
-          <ToggleGroupItem value="90D" className="text-xs px-3 py-1">
-            90D
           </ToggleGroupItem>
         </ToggleGroup>
       </CardHeader>
