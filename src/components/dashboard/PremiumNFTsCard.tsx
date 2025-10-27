@@ -98,7 +98,7 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
 };
 
 export function PremiumNFTsCard({ nfts, loading }: PremiumNFTsCardProps) {
-  // Show top 6 NFTs as premium
+  // Show top 6 NFTs as premium (expects server to sort by price desc)
   const premiumNFTs = nfts?.slice(0, 6) || [];
 
   return (
@@ -108,7 +108,7 @@ export function PremiumNFTsCard({ nfts, loading }: PremiumNFTsCardProps) {
           <div className="p-2 rounded-lg bg-primary/10">
             <Gem className="w-5 h-5 text-primary" />
           </div>
-          Featured NFTs
+          Most Expensive NFTs
           {nfts && nfts.length > 0 && (
             <span className="ml-auto text-sm font-normal text-muted-foreground">
               Top {premiumNFTs.length}

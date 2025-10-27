@@ -357,8 +357,8 @@ serve(async (req) => {
     let matchedByTokenId = 0;
     let matchedByNameCollection = 0;
     
-    // Fetch more transactions to find NFT purchases (limit 100 for performance)
-    const txUrl = `${fullnodeBase}/accounts/${address}/transactions?limit=100`;
+    // Fetch more transactions to find NFT purchases (limit increased for better coverage)
+    const txUrl = `${fullnodeBase}/accounts/${address}/transactions?limit=300`;
     const txResp = await fetch(txUrl, { headers: { 'Accept': 'application/json' } });
     
     let activity: Array<{ hash: string; type: string; success: boolean; timestamp: string }> = [];
@@ -387,11 +387,12 @@ serve(async (req) => {
           for (const event of events) {
             const eventType = String(event?.type || '');
             const data = event?.data || {};
+            const eventAccount = String(event?.guid?.account_address || '');
             const isWithdraw = /WithdrawEvent/.test(eventType) || eventType.includes('0x1::coin::WithdrawEvent');
+            const isFromBuyer = eventAccount.toLowerCase() === address.toLowerCase();
             const isApt = String(data?.coin_type || '').includes('0x1::aptos_coin::AptosCoin') || true;
-            if (isWithdraw && isApt) {
+            if (isWithdraw && isFromBuyer && isApt) {
               const amt = String(data?.amount || '0').replace(/\D/g, '') || '0';
-              // Keep the largest withdrawal amount in this tx as price
               if (BigInt(amt || '0') > BigInt(priceInOctas || '0')) priceInOctas = amt;
             }
             // Try to get token id from events if provided
@@ -470,7 +471,74 @@ serve(async (req) => {
       console.log('✓ Recent transactions fetched:', activity.length);
       console.log('✓ NFT prices found:', nftPriceMap.size, 'byTokenId:', matchedByTokenId, 'byNameCollection:', matchedByNameCollection);
     }
-    
+
+    // Fallback/enrichment via GraphQL join between token and coin activities
+    try {
+      const priceJoinQuery = `
+        query PriceJoins($address: String!) {
+          token_activities_v2(
+            where: {to_address: {_eq: $address}},
+            order_by: {transaction_version: desc},
+            limit: 300
+          ) {
+            transaction_version
+            token_data_id
+          }
+          coin_activities(
+            where: {owner_address: {_eq: $address}, activity_type: {_eq: "withdraw"}},
+            order_by: {transaction_version: desc},
+            limit: 1000
+          ) {
+            transaction_version
+            amount
+            coin_type
+          }
+        }
+      `;
+
+      const joinResp = await fetch(graphqlUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: priceJoinQuery, variables: { address } })
+      });
+
+      if (joinResp.ok) {
+        const joinData = await joinResp.json();
+        if (!joinData.errors) {
+          const toks = joinData.data?.token_activities_v2 || [];
+          const coins = joinData.data?.coin_activities || [];
+
+          const withdrawByVersion = new Map<number, string>();
+          for (const ca of coins) {
+            const v = Number(ca.transaction_version ?? -1);
+            const amt = String(ca.amount ?? '0').replace(/\D/g, '') || '0';
+            const type = String(ca.coin_type || '');
+            // prefer APT coin types
+            if (!withdrawByVersion.has(v) || type.includes('0x1::aptos_coin::AptosCoin')) {
+              withdrawByVersion.set(v, amt);
+            }
+          }
+
+          for (const ta of toks) {
+            const v = Number(ta.transaction_version ?? -1);
+            const amt = withdrawByVersion.get(v) || '0';
+            if (amt !== '0') {
+              const priceApt = formatUnits(amt, 8);
+              const tokenId = String(ta.token_data_id || '').toLowerCase();
+              if (tokenId) {
+                if (!nftPriceMap.has(tokenId)) {
+                  nftPriceMap.set(tokenId, { price: priceApt, hash: String(v) });
+                }
+              }
+            }
+          }
+          console.log('✓ Enriched NFT prices via GraphQL:', nftPriceMap.size);
+        }
+      }
+    } catch (err) {
+      console.log('GraphQL price join failed:', String(err));
+    }
+
     // Match NFT prices to owned NFTs (by tokenDataId or collection+name fallback)
     const nftsWithPrices = nfts.map(nft => {
       const keyById = String(nft.tokenDataId || '').toLowerCase();
