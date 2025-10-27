@@ -41,6 +41,15 @@ interface AptosResponse {
   totalUsdValue: number;
   sentimentScore: number;
   sentimentReasons: string[];
+  walletIdentity: {
+    activeDays: number;
+    totalGasSpent: string;
+    badges: Array<{
+      name: string;
+      description: string;
+      icon: string;
+    }>;
+  };
 }
 
 serve(async (req) => {
@@ -657,6 +666,8 @@ serve(async (req) => {
     let matchedByNameCollection = 0;
     let firstTransactionTimestamp = '';
     let lastTransactionTimestamp = '';
+    let activeDays = 0;
+    let totalGasSpent = '0';
     
     // Fetch more transactions to find NFT purchases (limit increased for better coverage)
     const txUrl = `${fullnodeBase}/accounts/${address}/transactions?limit=500`;
@@ -775,6 +786,29 @@ serve(async (req) => {
         success: tx.success !== false,
         timestamp: toISOFromTx(tx)
       }));
+
+      // Calculate wallet identity metrics (active days and total gas spent)
+      const uniqueDates = new Set<string>();
+      let totalGasInOctas = 0n;
+
+      for (const tx of transactions) {
+        // Track unique dates for active days
+        const timestamp = toISOFromTx(tx);
+        const date = timestamp.split('T')[0]; // Get YYYY-MM-DD
+        uniqueDates.add(date);
+
+        // Sum up gas spent (gas_used * gas_unit_price)
+        if (tx.gas_used && tx.gas_unit_price) {
+          const gasUsed = BigInt(String(tx.gas_used).replace(/\D/g, '') || '0');
+          const gasPrice = BigInt(String(tx.gas_unit_price).replace(/\D/g, '') || '0');
+          totalGasInOctas += gasUsed * gasPrice;
+        }
+      }
+
+      activeDays = uniqueDates.size;
+      totalGasSpent = formatUnits(String(totalGasInOctas), 8);
+      
+      console.log(`✓ Active days: ${activeDays}, Total gas: ${totalGasSpent} APT`);
       
       // Compute accurate first/last transaction timestamps via dedicated queries
       try {
@@ -1113,6 +1147,139 @@ serve(async (req) => {
     console.log(`✓ Sentiment score: ${sentimentScore}/100 with ${sentimentReasons.length} reasons`);
     // ==================== End Sentiment Calculation ====================
 
+    // ==================== Calculate Achievement Badges ====================
+    const badges: Array<{ name: string; description: string; icon: string }> = [];
+
+    // Early Adopter Badge - based on wallet age (first transaction)
+    if (firstTransactionTimestamp) {
+      const firstTxDate = new Date(firstTransactionTimestamp);
+      const now = new Date();
+      const daysSinceFirst = Math.floor((now.getTime() - firstTxDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysSinceFirst > 730) { // 2+ years
+        badges.push({
+          name: 'Pioneer',
+          description: 'Wallet age 2+ years - True Aptos OG',
+          icon: 'trophy'
+        });
+      } else if (daysSinceFirst > 365) { // 1+ year
+        badges.push({
+          name: 'Early Adopter',
+          description: 'Wallet age 1+ year - Been here since the beginning',
+          icon: 'star'
+        });
+      } else if (daysSinceFirst > 180) { // 6+ months
+        badges.push({
+          name: 'Veteran',
+          description: 'Wallet age 6+ months - Seasoned in Aptos',
+          icon: 'shield'
+        });
+      }
+    }
+
+    // Active Trader Badge - based on transaction count
+    if (totalTransactionCount > 1000) {
+      badges.push({
+        name: 'Power User',
+        description: '1,000+ transactions - Extremely active on Aptos',
+        icon: 'zap'
+      });
+    } else if (totalTransactionCount > 500) {
+      badges.push({
+        name: 'Active Trader',
+        description: '500+ transactions - Very active wallet',
+        icon: 'activity'
+      });
+    } else if (totalTransactionCount > 100) {
+      badges.push({
+        name: 'Frequent User',
+        description: '100+ transactions - Regular Aptos user',
+        icon: 'trending-up'
+      });
+    }
+
+    // NFT Collector Badge - based on NFT holdings
+    if (totalNftCount > 100) {
+      badges.push({
+        name: 'NFT Whale',
+        description: '100+ NFTs - Serious collector',
+        icon: 'image'
+      });
+    } else if (totalNftCount > 50) {
+      badges.push({
+        name: 'NFT Enthusiast',
+        description: '50+ NFTs - Passionate collector',
+        icon: 'gallery-horizontal'
+      });
+    } else if (totalNftCount > 20) {
+      badges.push({
+        name: 'NFT Collector',
+        description: '20+ NFTs - Building a collection',
+        icon: 'layers'
+      });
+    }
+
+    // Whale Badge - based on portfolio value
+    if (totalUsdValue > 100000) {
+      badges.push({
+        name: 'Mega Whale',
+        description: '$100K+ portfolio - Top tier holder',
+        icon: 'crown'
+      });
+    } else if (totalUsdValue > 50000) {
+      badges.push({
+        name: 'Whale',
+        description: '$50K+ portfolio - Significant holder',
+        icon: 'gem'
+      });
+    } else if (totalUsdValue > 10000) {
+      badges.push({
+        name: 'Dolphin',
+        description: '$10K+ portfolio - Established holder',
+        icon: 'wallet'
+      });
+    }
+
+    // DeFi User Badge - based on token diversity
+    if (topTokens.length > 10) {
+      badges.push({
+        name: 'DeFi Explorer',
+        description: '10+ different tokens - Diverse DeFi user',
+        icon: 'compass'
+      });
+    } else if (topTokens.length > 5) {
+      badges.push({
+        name: 'Token Holder',
+        description: '5+ different tokens - Active in DeFi',
+        icon: 'coins'
+      });
+    }
+
+    // Gas Contributor Badge - based on gas spent
+    const gasSpent = parseFloat(totalGasSpent || '0');
+    if (gasSpent > 100) {
+      badges.push({
+        name: 'Network Supporter',
+        description: '100+ APT in gas - Supporting the network',
+        icon: 'heart'
+      });
+    } else if (gasSpent > 50) {
+      badges.push({
+        name: 'Gas Contributor',
+        description: '50+ APT in gas - Active contributor',
+        icon: 'fuel'
+      });
+    } else if (gasSpent > 10) {
+      badges.push({
+        name: 'Network User',
+        description: '10+ APT in gas - Regular contributor',
+        icon: 'flame'
+      });
+    }
+
+    console.log(`✓ Earned ${badges.length} badges`);
+    // ==================== End Badge Calculation ====================
+
     const response: AptosResponse = {
       account: {
         address,
@@ -1130,7 +1297,12 @@ serve(async (req) => {
       totalTransactionCount,
       totalUsdValue,
       sentimentScore,
-      sentimentReasons
+      sentimentReasons,
+      walletIdentity: {
+        activeDays,
+        totalGasSpent,
+        badges
+      }
     };
 
     console.log('Returning:', {

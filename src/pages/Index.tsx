@@ -9,6 +9,7 @@ import { ActivityCard } from "@/components/dashboard/ActivityCard";
 import { NFTsCard } from "@/components/dashboard/NFTsCard";
 import { PremiumNFTsCard } from "@/components/dashboard/PremiumNFTsCard";
 import { PortfolioChartCard } from "@/components/dashboard/PortfolioChartCard";
+import { WalletIdentityCard } from "@/components/dashboard/WalletIdentityCard";
 import aptosLogo from "@/assets/aptos-logo.png";
 
 interface AccountData {
@@ -55,6 +56,15 @@ interface AptosData {
   totalUsdValue: number;
   sentimentScore: number;
   sentimentReasons: string[];
+  walletIdentity: {
+    activeDays: number;
+    totalGasSpent: string;
+    badges: Array<{
+      name: string;
+      description: string;
+      icon: string;
+    }>;
+  };
 }
 
 export default function IndexPage() {
@@ -174,6 +184,16 @@ export default function IndexPage() {
 
         {/* Dashboard Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Wallet Identity Card - spans 2 columns */}
+          <div className="lg:col-span-2">
+            <WalletIdentityCard
+              data={data?.walletIdentity || null}
+              loading={loading}
+              walletAge={data?.account?.firstTransactionTimestamp}
+              transactionCount={data?.totalTransactionCount || 0}
+            />
+          </div>
+
           <div className="space-y-6">
             <AccountCard 
               data={data?.account || null} 
