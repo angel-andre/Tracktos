@@ -354,6 +354,8 @@ serve(async (req) => {
     // Parse NFT purchase prices from transaction history
     console.log('Parsing NFT purchase prices...');
     const nftPriceMap = new Map<string, { price: string; hash: string }>();
+    let matchedByTokenId = 0;
+    let matchedByNameCollection = 0;
     
     // Fetch more transactions to find NFT purchases (limit 100 for performance)
     const txUrl = `${fullnodeBase}/accounts/${address}/transactions?limit=100`;
@@ -369,51 +371,91 @@ serve(async (req) => {
         
         const payload = tx.payload;
         const events = tx.events || [];
+        const changes = tx.changes || [];
         
         // Look for common NFT marketplace functions and minting functions
-        const isNftTransaction = payload?.function?.includes('token') || 
-                                 payload?.function?.includes('nft') ||
-                                 payload?.function?.includes('mint') ||
-                                 payload?.function?.includes('buy') ||
-                                 payload?.function?.includes('purchase');
+        const fnStr: string = payload?.function || '';
+        const isNftTransaction = /token|nft|mint|buy|purchase/i.test(fnStr);
         
         if (isNftTransaction) {
           let priceInOctas = '0';
-          let tokenId = '';
+          let tokenId: string = '';
+          let nameFromChange = '';
+          let collectionFromChange = '';
           
-          // Extract price from events (look for coin withdraw/deposit events)
+          // Extract price from coin withdraw events (buyer paying APT)
           for (const event of events) {
-            const eventType = event.type || '';
-            
-            // Look for coin withdrawal (payment)
-            if (eventType.includes('WithdrawEvent') || eventType.includes('0x1::coin::WithdrawEvent')) {
-              priceInOctas = event.data?.amount || '0';
+            const eventType = String(event?.type || '');
+            const data = event?.data || {};
+            const isWithdraw = /WithdrawEvent/.test(eventType) || eventType.includes('0x1::coin::WithdrawEvent');
+            const isApt = String(data?.coin_type || '').includes('0x1::aptos_coin::AptosCoin') || true;
+            if (isWithdraw && isApt) {
+              const amt = String(data?.amount || '0').replace(/\D/g, '') || '0';
+              // Keep the largest withdrawal amount in this tx as price
+              if (BigInt(amt || '0') > BigInt(priceInOctas || '0')) priceInOctas = amt;
             }
-            
-            // Look for token/NFT events to get token ID
-            if (eventType.includes('MintTokenEvent') || 
-                eventType.includes('BuyEvent') ||
-                eventType.includes('TokenDepositEvent') ||
-                eventType.includes('DepositEvent')) {
-              tokenId = event.data?.token_id || event.data?.id?.token_data_id || '';
+            // Try to get token id from events if provided
+            if (!tokenId) {
+              const idCandidate = data?.token_id || data?.id?.token_data_id || data?.id || '';
+              if (typeof idCandidate === 'string') tokenId = idCandidate;
+              else if (idCandidate && typeof idCandidate === 'object') {
+                const creator = idCandidate.creator || idCandidate.creator_address || '';
+                const coll = idCandidate.collection || idCandidate.collection_name || '';
+                const nm = idCandidate.name || idCandidate.token_name || '';
+                if (creator && coll && nm) tokenId = `${creator}::${coll}::${nm}`;
+              }
             }
           }
-          
-          // Also check payload arguments for price
+
+          // Scan state changes for token identifier (TokenId)
+          if (!tokenId) {
+            for (const ch of changes) {
+              try {
+                const chType = String(ch?.type || '');
+                const data = ch?.data || {};
+                const keyType = String(data?.key_type || ch?.key_type || '');
+                if (chType === 'write_table_item' && /TokenId/.test(keyType)) {
+                  let keyVal: any = data?.key ?? ch?.key;
+                  if (typeof keyVal === 'string') {
+                    try { keyVal = JSON.parse(keyVal); } catch { /* ignore */ }
+                  }
+                  const creator = keyVal?.creator || keyVal?.creator_address || '';
+                  const coll = keyVal?.collection || keyVal?.collection_name || '';
+                  const nm = keyVal?.name || keyVal?.token_name || '';
+                  if (!tokenId && creator && coll && nm) {
+                    tokenId = `${creator}::${coll}::${nm}`;
+                    nameFromChange = nm;
+                    collectionFromChange = coll;
+                  }
+                }
+              } catch (_) { /* ignore */ }
+            }
+          }
+
+          // Also check payload arguments for price (many marketplaces pass price as arg)
           if (payload?.arguments && Array.isArray(payload.arguments)) {
             for (const arg of payload.arguments) {
-              // Price is usually a large number in arguments
               if (typeof arg === 'string' && /^\d{6,}$/.test(arg)) {
-                priceInOctas = arg;
+                // large numeric string -> potential octas price
+                if (BigInt(arg) > BigInt(priceInOctas || '0')) priceInOctas = arg;
               }
             }
           }
           
-          // Convert octas to APT (1 APT = 100000000 octas)
-          if (priceInOctas !== '0' && tokenId) {
+          // Convert octas to APT (1 APT = 100000000 octas) and map to identifiers
+          if (priceInOctas !== '0') {
             const priceApt = formatUnits(priceInOctas, 8);
-            nftPriceMap.set(tokenId, { price: priceApt, hash: tx.hash });
-            console.log(`✓ NFT purchase: ${priceApt} APT (token: ${tokenId.slice(0, 20)}...)`);
+            if (tokenId) {
+              nftPriceMap.set(String(tokenId).toLowerCase(), { price: priceApt, hash: tx.hash });
+              matchedByTokenId++;
+            }
+            if (nameFromChange && collectionFromChange) {
+              const key = `${collectionFromChange}::${nameFromChange}`.toLowerCase();
+              if (!nftPriceMap.has(key)) {
+                nftPriceMap.set(key, { price: priceApt, hash: tx.hash });
+                matchedByNameCollection++;
+              }
+            }
           }
         }
       }
@@ -426,12 +468,14 @@ serve(async (req) => {
         timestamp: tx.timestamp || new Date().toISOString()
       }));
       console.log('✓ Recent transactions fetched:', activity.length);
-      console.log('✓ NFT prices found:', nftPriceMap.size);
+      console.log('✓ NFT prices found:', nftPriceMap.size, 'byTokenId:', matchedByTokenId, 'byNameCollection:', matchedByNameCollection);
     }
     
-    // Match NFT prices to owned NFTs
+    // Match NFT prices to owned NFTs (by tokenDataId or collection+name fallback)
     const nftsWithPrices = nfts.map(nft => {
-      const priceData = nft.tokenDataId ? nftPriceMap.get(nft.tokenDataId) : null;
+      const keyById = String(nft.tokenDataId || '').toLowerCase();
+      const keyByNC = `${nft.collection}::${nft.name}`.toLowerCase();
+      const priceData = nftPriceMap.get(keyById) || nftPriceMap.get(keyByNC) || null;
       return {
         name: nft.name,
         collection: nft.collection,
