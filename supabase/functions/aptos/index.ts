@@ -12,6 +12,8 @@ interface AptosResponse {
     stakedApt: string;
     firstTransactionTimestamp?: string;
     lastTransactionTimestamp?: string;
+    usdChange24h: number;
+    percentChange24h: number;
   };
   tokens: Array<{
     name: string;
@@ -228,6 +230,50 @@ serve(async (req) => {
           } catch (error) {
             console.log(`Error fetching DexScreener price for ${symbol}:`, error);
           }
+        }
+      }
+
+      return priceMap;
+    };
+
+    // Helper to fetch historical prices (24h ago)
+    const fetchHistoricalPrices = async (symbols: string[]): Promise<Map<string, number>> => {
+      const priceMap = new Map<string, number>();
+      
+      // CoinGecko coin IDs
+      const coinGeckoIds: Record<string, string> = {
+        'APT': 'aptos',
+        'USDC': 'usd-coin',
+        'USDT': 'tether',
+        'WETH': 'weth',
+        'BTC': 'bitcoin',
+        'SOL': 'solana',
+        'GUI': 'gui-inu',
+        'CAKE': 'pancakeswap-token',
+        'WBTC': 'wrapped-bitcoin'
+      };
+
+      // Fetch 24h historical data from CoinGecko
+      for (const symbol of symbols) {
+        const coinId = coinGeckoIds[symbol.toUpperCase()];
+        if (!coinId) continue;
+
+        try {
+          const url = `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=1&interval=hourly`;
+          const response = await fetch(url);
+          
+          if (response.ok) {
+            const data = await response.json();
+            // prices is an array of [timestamp, price] pairs
+            // Get the first price (24h ago)
+            if (data.prices && data.prices.length > 0) {
+              const price24hAgo = data.prices[0][1];
+              priceMap.set(symbol.toUpperCase(), price24hAgo);
+              console.log(`✓ 24h-ago price for ${symbol}: $${price24hAgo}`);
+            }
+          }
+        } catch (error) {
+          console.log(`Error fetching 24h price for ${symbol}:`, error);
         }
       }
 
@@ -469,6 +515,27 @@ serve(async (req) => {
     const totalUsdValue = aptUsdValue + tokensUsdValue;
     
     console.log(`✓ Total portfolio USD value: $${totalUsdValue.toFixed(2)}`);
+
+    // Calculate 24h change
+    console.log('Calculating 24h portfolio change...');
+    const historicalPriceMap = await fetchHistoricalPrices(tokenSymbols);
+    
+    const aptPrice24hAgo = historicalPriceMap.get('APT') || aptPrice; // fallback to current if unavailable
+    const aptUsdValue24hAgo = parseFloat(aptBalance) * aptPrice24hAgo;
+    
+    const tokensUsdValue24hAgo = topTokens.reduce((sum, token) => {
+      const price24hAgo = historicalPriceMap.get(token.symbol.toUpperCase()) || token.usdPrice; // fallback to current
+      const balance = parseFloat(token.balance) || 0;
+      return sum + (balance * price24hAgo);
+    }, 0);
+    
+    const totalUsdValue24hAgo = aptUsdValue24hAgo + tokensUsdValue24hAgo;
+    const usdChange24h = totalUsdValue - totalUsdValue24hAgo;
+    const percentChange24h = totalUsdValue24hAgo > 0 
+      ? (usdChange24h / totalUsdValue24hAgo) * 100 
+      : 0;
+    
+    console.log(`✓ 24h change: $${usdChange24h.toFixed(2)} (${percentChange24h.toFixed(2)}%)`);
 
     // Get total NFT count
     const totalNftCount = data.current_token_ownerships_v2_aggregate?.aggregate?.count || 0;
@@ -813,7 +880,9 @@ serve(async (req) => {
         aptBalance,
         stakedApt,
         firstTransactionTimestamp: firstTransactionTimestamp || undefined,
-        lastTransactionTimestamp: lastTransactionTimestamp || undefined
+        lastTransactionTimestamp: lastTransactionTimestamp || undefined,
+        usdChange24h,
+        percentChange24h
       },
       tokens: topTokens,
       nfts: sortedNfts.slice(0, 10),
