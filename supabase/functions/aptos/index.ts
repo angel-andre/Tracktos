@@ -248,8 +248,8 @@ serve(async (req) => {
     const looksLikeImageUrl = (u: string) => /\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(u);
     const resolveIpfs = (u: string) => {
       if (!u) return u;
-      if (u.startsWith('ipfs://ipfs/')) return `https://ipfs.io/${u.slice('ipfs://'.length)}`;
-      if (u.startsWith('ipfs://')) return `https://ipfs.io/ipfs/${u.slice('ipfs://'.length)}`;
+      if (u.startsWith('ipfs://ipfs/')) return `https://cloudflare-ipfs.com/${u.slice('ipfs://'.length)}`;
+      if (u.startsWith('ipfs://')) return `https://cloudflare-ipfs.com/ipfs/${u.slice('ipfs://'.length)}`;
       return u;
     };
 
@@ -261,29 +261,16 @@ serve(async (req) => {
         const idx = lowerPath.indexOf('/ipfs/');
         if (idx !== -1) {
           const ipfsPath = url.pathname.slice(idx + '/ipfs/'.length);
-          return `https://nftstorage.link/ipfs/${ipfsPath}`;
+          // Use Cloudflare IPFS gateway for better reliability
+          return `https://cloudflare-ipfs.com/ipfs/${ipfsPath}`;
         }
       } catch (_) {
         const m = u.match(/ipfs\/(.+)$/i);
-        if (m) return `https://nftstorage.link/ipfs/${m[1]}`;
+        if (m) return `https://cloudflare-ipfs.com/ipfs/${m[1]}`;
       }
       return u;
     };
 
-    const proxyImage = (u: string) => {
-      if (!u) return u;
-      try {
-        const url = new URL(u);
-        const host = url.hostname.toLowerCase();
-        // Keep trusted hosts direct
-        if (host.endsWith('arweave.net') || host.endsWith('cdn.galxe.com')) return u;
-        // Proxy all other hosts to normalize headers/content-type
-        const naked = `${url.hostname}${url.pathname}${url.search}`;
-        return `https://images.weserv.nl/?url=${encodeURIComponent(naked)}`;
-      } catch (_) {
-        return u;
-      }
-    };
 
     let metadataFetches = 0;
 
@@ -316,7 +303,6 @@ serve(async (req) => {
 
           image = resolveIpfs(image);
           image = normalizeGateway(image);
-          image = proxyImage(image);
           nfts.push({ name, collection, image });
           console.log('✓ NFT:', name, 'img:', image?.slice(0, 100));
         }
