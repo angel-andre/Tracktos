@@ -933,23 +933,42 @@ serve(async (req) => {
             
             // Detect withdraw/sent coins (user paying)
             if (eventType.includes('WithdrawEvent') || eventType.includes('0x1::coin::WithdrawEvent')) {
-              const coinType = String(data?.coin_type || data?.type_info?.type || '');
+              let coinType = String(data?.coin_type || data?.type_info?.type || '');
               const amount = String(data?.amount || '0');
-              if (coinType && amount && BigInt(amount) > 0n && !fromToken) {
-                fromToken = coinType.split('::').pop()?.replace(/>/g, '') || 'Unknown';
+              if (!coinType && eventType.includes('<') && eventType.includes('>')) {
+                coinType = eventType.substring(eventType.indexOf('<') + 1, eventType.lastIndexOf('>'));
+              }
+              if (amount && BigInt(amount) > 0n && !fromToken) {
+                const symbol = (coinType ? coinType.split('::').pop() : '') || 'Unknown';
+                fromToken = symbol.replace(/>/g, '') || 'Unknown';
                 fromAmount = amount;
               }
             }
             
             // Detect deposit/received coins (user receiving)
             if (eventType.includes('DepositEvent') || eventType.includes('0x1::coin::DepositEvent')) {
-              const coinType = String(data?.coin_type || data?.type_info?.type || '');
+              let coinType = String(data?.coin_type || data?.type_info?.type || '');
               const amount = String(data?.amount || '0');
-              if (coinType && amount && BigInt(amount) > 0n && !toToken) {
-                toToken = coinType.split('::').pop()?.replace(/>/g, '') || 'Unknown';
+              if (!coinType && eventType.includes('<') && eventType.includes('>')) {
+                coinType = eventType.substring(eventType.indexOf('<') + 1, eventType.lastIndexOf('>'));
+              }
+              if (amount && BigInt(amount) > 0n && !toToken) {
+                const symbol = (coinType ? coinType.split('::').pop() : '') || 'Unknown';
+                toToken = symbol.replace(/>/g, '') || 'Unknown';
                 toAmount = amount;
               }
             }
+          }
+          
+          // Fallback: infer token types from payload type_arguments if events missing
+          if ((!fromToken || !toToken) && tx.payload && Array.isArray((tx.payload as any).type_arguments)) {
+            const args = ((tx.payload as any).type_arguments as string[]).slice(0, 2);
+            const toSymbol = (t: string) => {
+              const gen = t && t.includes('<') && t.includes('>') ? t.substring(t.indexOf('<') + 1, t.lastIndexOf('>')) : t;
+              return (gen?.split('::').pop() || 'Unknown').replace(/>/g, '');
+            };
+            if (!fromToken && args[0]) fromToken = toSymbol(args[0]);
+            if (!toToken && args[1]) toToken = toSymbol(args[1]);
           }
           
           // Calculate volume in USD (try both tokens)
@@ -985,6 +1004,11 @@ serve(async (req) => {
               volumeUsd: prevVolume.volumeUsd + volumeUsd,
               txCount: prevVolume.txCount + 1
             });
+          } else {
+            // Couldn't resolve tokens, still count a swap interaction for protocol usage stats
+            const key = `${contractName}::${contractType}`;
+            const prev = protocolVolumes.get(key) || { protocol: contractName, type: contractType, volumeUsd: 0, txCount: 0 };
+            protocolVolumes.set(key, { ...prev, txCount: prev.txCount + 1 });
           }
         }
         
