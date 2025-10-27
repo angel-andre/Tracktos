@@ -140,8 +140,26 @@ export default function IndexPage() {
 
   const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; className?: string }) => {
     const [i, setI] = React.useState(0);
-    const onError = () => setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
+    const [loaded, setLoaded] = React.useState(false);
     const src = srcs[i];
+
+    React.useEffect(() => {
+      setLoaded(false);
+      let cancelled = false;
+      const timer = setTimeout(() => {
+        if (!loaded && !cancelled) {
+          setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
+        }
+      }, 5000); // timeout to try next gateway if it hangs
+      return () => {
+        cancelled = true;
+        clearTimeout(timer);
+      };
+    }, [src, srcs.length, loaded]);
+
+    const onError = () => setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
+    const onLoad = () => setLoaded(true);
+
     return (
       <img
         src={src}
@@ -149,6 +167,7 @@ export default function IndexPage() {
         className={className}
         loading="lazy"
         decoding="async"
+        onLoad={onLoad}
         onError={onError}
       />
     );
