@@ -802,52 +802,13 @@ serve(async (req) => {
     // Transaction Analytics: Analyze transaction patterns
     console.log('Computing transaction analytics...');
     
-    // Fetch recent transactions from the end until we cover the desired window
-    const desiredDaysForAnalytics = 120; // last ~4 months
-    const cutoffDate = new Date();
-    cutoffDate.setUTCDate(cutoffDate.getUTCDate() - desiredDaysForAnalytics);
-    
-    const analyticsBatchSize = 500;
-    let analyticsStart = Math.max(0, totalTransactionCount - analyticsBatchSize);
-    let analyticsRaw: any[] = [];
-    
-    while (true) {
-      const url = `${fullnodeBase}/accounts/${address}/transactions?start=${analyticsStart}&limit=${analyticsBatchSize}`;
-      const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
-      if (!resp.ok) break;
-      const arr = await resp.json();
-      if (!Array.isArray(arr) || arr.length === 0) break;
-      analyticsRaw.push(...arr);
-      
-      // Check oldest date in this batch
-      let oldestMs = Number.POSITIVE_INFINITY;
-      for (const tx of arr) {
-        const iso = toISOFromTx(tx);
-        const t = Date.parse(iso);
-        if (!isNaN(t) && t < oldestMs) oldestMs = t;
-      }
-      if (oldestMs !== Number.POSITIVE_INFINITY && oldestMs <= cutoffDate.getTime()) break;
-      if (analyticsStart === 0) break;
-      analyticsStart = Math.max(0, analyticsStart - analyticsBatchSize);
-    }
-    
-    // Dedup and keep only user transactions for analytics
-    const seenAnalytics = new Set<string>();
-    const analyticsUserTxs: any[] = [];
-    for (const tx of analyticsRaw) {
-      const key = String(tx.version ?? tx.hash ?? '');
-      if (!key || seenAnalytics.has(key)) continue;
-      seenAnalytics.add(key);
-      if (tx.type === 'user_transaction') analyticsUserTxs.push(tx);
-    }
-    
     // Activity Heatmap: Count transactions per day
     const dailyCounts = new Map<string, number>();
     const dailyGas = new Map<string, bigint>();
     const contractCounts = new Map<string, { name: string; count: number; type: string }>();
     const typeCounts = new Map<string, number>();
     
-    for (const tx of analyticsUserTxs) {
+    for (const tx of userTxs) {
       const iso = toISOFromTx(tx);
       const date = iso.split('T')[0];
       
@@ -917,19 +878,6 @@ serve(async (req) => {
       typeCounts.set(txType, (typeCounts.get(txType) || 0) + 1);
     }
     
-    // Normalize daily series to include all dates up to today (UTC)
-    const existingKeys = Array.from(dailyCounts.keys()).sort();
-    const todayKey = new Date().toISOString().slice(0, 10);
-    const startKey = existingKeys.length ? existingKeys[0] : todayKey;
-    const startDate = new Date(startKey + 'T00:00:00.000Z');
-    const endDate = new Date(todayKey + 'T00:00:00.000Z');
-
-    for (let d = new Date(startDate); d <= endDate; d.setUTCDate(d.getUTCDate() + 1)) {
-      const k = d.toISOString().slice(0, 10);
-      if (!dailyCounts.has(k)) dailyCounts.set(k, 0);
-      if (!dailyGas.has(k)) dailyGas.set(k, 0n);
-    }
-
     // Format heatmap data
     const activityHeatmap = Array.from(dailyCounts.entries())
       .map(([date, count]) => ({ date, count }))
@@ -941,7 +889,7 @@ serve(async (req) => {
       .map(([type, count]) => ({
         type,
         count,
-        percentage: totalTyped ? Math.round((count / totalTyped) * 100) : 0
+        percentage: Math.round((count / totalTyped) * 100)
       }))
       .sort((a, b) => b.count - a.count);
     
