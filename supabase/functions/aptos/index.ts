@@ -842,7 +842,7 @@ serve(async (req) => {
           query TokenActivities($address: String!, $ids: [String!]) {
             token_activities_v2(
               where: { to_address: { _eq: $address }, token_data_id: { _in: $ids } }
-              order_by: { transaction_version: desc }
+              order_by: { transaction_version: asc }
               limit: 5000
             ) {
               token_data_id
@@ -872,13 +872,13 @@ serve(async (req) => {
             const acts: Array<{ token_data_id: string; transaction_version: number }> = taData.data?.token_activities_v2 || [];
             const faas: Array<{ transaction_version: number; amount: string; asset_type: string }> = taData.data?.fungible_asset_activities || [];
 
-            // Latest incoming version per token id
-            const latestVersionByToken = new Map<string, number>();
+            // Earliest incoming version per token id (first acquisition)
+            const firstVersionByToken = new Map<string, number>();
             for (const a of acts) {
               const id = String(a.token_data_id || '').toLowerCase();
               const v = Number(a.transaction_version ?? -1);
-              if (!latestVersionByToken.has(id) || v > (latestVersionByToken.get(id) || -1)) {
-                latestVersionByToken.set(id, v);
+              if (!firstVersionByToken.has(id) || v < (firstVersionByToken.get(id) || Number.POSITIVE_INFINITY)) {
+                firstVersionByToken.set(id, v);
               }
             }
 
@@ -928,9 +928,9 @@ serve(async (req) => {
               return String(apt);
             };
 
-            // Map token ids to prices in APT
+            // Map token ids to prices in APT (using first acquisition version)
             let joined = 0;
-            for (const [id, version] of latestVersionByToken.entries()) {
+            for (const [id, version] of firstVersionByToken.entries()) {
               const wd = withdrawByVersion.get(version);
               if (wd) {
                 const priceApt = toApt(wd.amt, wd.asset);
