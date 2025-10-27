@@ -97,51 +97,55 @@ serve(async (req) => {
       return parseFloat(v) / divisor;
     };
 
-    // Map token symbols to CoinGecko IDs
-    const coinGeckoIds: Record<string, string> = {
-      'APT': 'aptos',
-      'USDC': 'usd-coin',
-      'USDT': 'tether',
-      'WETH': 'weth',
-      'BTC': 'bitcoin',
-      'SOL': 'solana',
-      'GUI': 'gui-inu',
-      'CAKE': 'pancakeswap-token',
-      'WBTC': 'wrapped-bitcoin'
+    // Helper: map asset type/symbol to CoinGecko ID (prefer canonical mappings)
+    const getCoinGeckoId = (symbol: string, assetType: string): string | null => {
+      // Canonical APT on Aptos
+      if (assetType === '0x1::aptos_coin::AptosCoin' || symbol === 'APT') return 'aptos';
+      // Fallback by common symbols (may include multiple issuers on Aptos)
+      const map: Record<string, string> = {
+        'USDC': 'usd-coin',
+        'USDT': 'tether',
+        'WETH': 'weth',
+        'BTC': 'bitcoin',
+        'SOL': 'solana',
+        'GUI': 'gui-inu',
+        'CAKE': 'pancakeswap-token',
+        'WBTC': 'wrapped-bitcoin',
+      };
+      return map[symbol] || null;
     };
 
     // Process current balances
-    const tokenBalances: TokenBalance[] = [];
+    const rawTokenBalances: Array<{ symbol: string; balance: number; assetType: string; coinGeckoId: string } > = [];
     const balances = graphqlData.data?.current_fungible_asset_balances || [];
     
     for (const item of balances) {
       const symbol = item.metadata?.symbol?.toUpperCase() || '';
       const decimals = item.metadata?.decimals ?? 8;
       const balance = formatUnits(item.amount, decimals);
+      const assetType = item.asset_type as string;
+      const cgId = getCoinGeckoId(symbol, assetType);
       
-      if (balance > 0 && coinGeckoIds[symbol]) {
-        tokenBalances.push({
-          symbol,
-          balance,
-          coinGeckoId: coinGeckoIds[symbol]
-        });
+      if (balance > 0 && cgId) {
+        rawTokenBalances.push({ symbol, balance, assetType, coinGeckoId: cgId });
       }
     }
 
-    // Deduplicate tokens by CoinGecko ID and sum balances (avoid double counting same token)
-    const aggregated = new Map<string, TokenBalance>();
-    for (const t of tokenBalances) {
+    // Deduplicate by CoinGecko ID: keep the LARGEST balance to avoid double-counting wrappers/duplicates
+    const aggregated = new Map<string, { symbol: string; balance: number; assetType: string; coinGeckoId: string }>();
+    for (const t of rawTokenBalances) {
       const existing = aggregated.get(t.coinGeckoId);
-      if (existing) {
-        existing.balance += t.balance;
-        aggregated.set(t.coinGeckoId, existing);
-      } else {
+      if (!existing || t.balance > existing.balance) {
         aggregated.set(t.coinGeckoId, { ...t });
       }
     }
-    const uniqueTokenBalances = Array.from(aggregated.values());
+    const uniqueTokenBalances: TokenBalance[] = Array.from(aggregated.values()).map((t) => ({
+      symbol: t.symbol,
+      balance: t.balance,
+      coinGeckoId: t.coinGeckoId,
+    }));
 
-    console.log(`Found ${uniqueTokenBalances.length} unique tokens with balances:`, uniqueTokenBalances.map(t => `${t.symbol}(${t.balance.toFixed(2)})`));
+    console.log(`Selected ${uniqueTokenBalances.length} tokens:`, uniqueTokenBalances.map(t => `${t.symbol}(${t.balance.toFixed(4)})`));
 
     if (uniqueTokenBalances.length === 0) {
       // Return empty array if no tokens
