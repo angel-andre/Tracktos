@@ -80,27 +80,54 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
     setFinalSrc(null);
     let cancelled = false;
 
+    const advance = () => {
+      setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
+    };
+
     const loadImage = async () => {
       if (!src) return;
-
       try {
-        if (src.endsWith('.json')) {
-          const response = await fetch(src);
-          const metadata = await response.json();
-          const imageUrl = metadata.image || metadata.image_url || metadata.uri;
-          if (imageUrl && !cancelled) {
-            const candidates = buildImageCandidates(imageUrl);
-            setFinalSrc(candidates[0] || imageUrl);
-          } else if (!cancelled) {
-            setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
+        const shouldAssumeJson = src.endsWith('.json');
+        let res: Response | null = null;
+        try {
+          res = await fetch(src, { headers: { accept: 'application/json,image/*' } });
+        } catch {
+          // If CORS blocks us, let the <img> try directly
+          if (!shouldAssumeJson) {
+            if (!cancelled) setFinalSrc(src);
+            return;
           }
-        } else {
-          setFinalSrc(src);
         }
-      } catch (error) {
-        if (!cancelled) {
-          setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
+
+        if (res) {
+          const ctype = res.headers.get('content-type') || '';
+          const isJson = shouldAssumeJson || ctype.includes('application/json');
+          if (isJson) {
+            let metadata: any = null;
+            try {
+              metadata = await res.json();
+            } catch {
+              try {
+                const text = await res.text();
+                metadata = JSON.parse(text);
+              } catch {
+                advance();
+                return;
+              }
+            }
+            const imageUrl: string | undefined = metadata?.image || metadata?.image_url || metadata?.imageUrl || metadata?.imageURI || metadata?.uri || metadata?.media;
+            if (imageUrl && !cancelled) {
+              const candidates = buildImageCandidates(imageUrl);
+              setFinalSrc(candidates[0] || imageUrl);
+            } else {
+              advance();
+            }
+          } else {
+            if (!cancelled) setFinalSrc(src);
+          }
         }
+      } catch {
+        advance();
       }
     };
 
@@ -108,7 +135,7 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
 
     const timer = setTimeout(() => {
       if (!loaded && !cancelled) {
-        setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
+        advance();
       }
     }, 8000);
 
