@@ -11,6 +11,7 @@ import { PremiumNFTsCard } from "@/components/dashboard/PremiumNFTsCard";
 import { PortfolioChartCard } from "@/components/dashboard/PortfolioChartCard";
 import { WalletIdentityCard } from "@/components/dashboard/WalletIdentityCard";
 import { TransactionAnalyticsCard } from "@/components/dashboard/TransactionAnalyticsCard";
+import { DeFiActivityCard } from "@/components/dashboard/DeFiActivityCard";
 import aptosLogo from "@/assets/aptos-logo.png";
 
 interface AccountData {
@@ -71,6 +72,13 @@ interface AptosData {
     typeBreakdown: { type: string; count: number; percentage: number }[];
     gasOverTime: { date: string; gas: string }[];
     topContracts: { address: string; name: string; count: number; type: string }[];
+  };
+  defiActivity?: {
+    swapHistory: { timestamp: string; protocol: string; fromToken: string; toToken: string; fromAmount: string; toAmount: string; volumeUsd: number }[];
+    protocolVolumes: { protocol: string; type: string; volumeUsd: number; txCount: number }[];
+    stakingActivities: { protocol: string; action: string; amount: string; timestamp: string }[];
+    totalDefiVolumeUsd: number;
+    uniqueProtocols: number;
   };
 }
 
@@ -205,6 +213,13 @@ export default function IndexPage() {
           {data?.transactionAnalytics && (
             <div className="lg:col-span-2">
               <TransactionAnalyticsCard analytics={data.transactionAnalytics} />
+            </div>
+          )}
+
+          {/* DeFi Activity Card - spans 2 columns */}
+          {data?.defiActivity && (
+            <div className="lg:col-span-2">
+              <DeFiActivityCard defiActivity={data.defiActivity} />
             </div>
           )}
 

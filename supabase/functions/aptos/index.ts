@@ -56,6 +56,13 @@ interface AptosResponse {
     gasOverTime: { date: string; gas: string }[];
     topContracts: { address: string; name: string; count: number; type: string }[];
   };
+  defiActivity?: {
+    swapHistory: { timestamp: string; protocol: string; fromToken: string; toToken: string; fromAmount: string; toAmount: string; volumeUsd: number }[];
+    protocolVolumes: { protocol: string; type: string; volumeUsd: number; txCount: number }[];
+    stakingActivities: { protocol: string; action: string; amount: string; timestamp: string }[];
+    totalDefiVolumeUsd: number;
+    uniqueProtocols: number;
+  };
 }
 
 serve(async (req) => {
@@ -808,6 +815,11 @@ serve(async (req) => {
     const contractCounts = new Map<string, { name: string; count: number; type: string }>();
     const typeCounts = new Map<string, number>();
     
+    // DeFi Activity Tracking
+    const swapHistory: Array<{ timestamp: string; protocol: string; fromToken: string; toToken: string; fromAmount: string; toAmount: string; volumeUsd: number }> = [];
+    const protocolVolumes = new Map<string, { protocol: string; type: string; volumeUsd: number; txCount: number }>();
+    const stakingActivities: Array<{ protocol: string; action: string; amount: string; timestamp: string }> = [];
+    
     for (const tx of userTxs) {
       const iso = toISOFromTx(tx);
       const date = iso.split('T')[0];
@@ -841,7 +853,7 @@ serve(async (req) => {
           txType = 'Claim';
         }
         
-        // Track contract interactions
+        // Track contract interactions and DeFi activities
         const funcParts = tx.payload.function.split('::');
         if (funcParts.length >= 2) {
           const contractAddr = funcParts[0];
@@ -857,8 +869,20 @@ serve(async (req) => {
           } else if (contractAddr.includes('liquidswap') || module.includes('liquidswap')) {
             contractName = 'LiquidSwap';
             contractType = 'DEX';
-          } else if (contractAddr.includes('tortuga') || module.includes('stake')) {
-            contractName = 'Tortuga Staking';
+          } else if (contractAddr.includes('thala') || module.includes('thala')) {
+            contractName = 'Thala';
+            contractType = 'DEX';
+          } else if (contractAddr.includes('aries') || module.includes('aries')) {
+            contractName = 'Aries Markets';
+            contractType = 'Lending';
+          } else if (contractAddr.includes('tortuga') || module.includes('tortuga')) {
+            contractName = 'Tortuga';
+            contractType = 'Staking';
+          } else if (contractAddr.includes('ditto') || module.includes('ditto')) {
+            contractName = 'Ditto';
+            contractType = 'Staking';
+          } else if (module.includes('stake')) {
+            contractName = 'Staking Protocol';
             contractType = 'Staking';
           } else if (module.includes('coin')) {
             contractName = 'Coin Operations';
@@ -872,11 +896,103 @@ serve(async (req) => {
           
           const existing = contractCounts.get(contractAddr) || { name: contractName, count: 0, type: contractType };
           contractCounts.set(contractAddr, { ...existing, count: existing.count + 1 });
+          
+          // Extract DeFi-specific data
+          if (txType === 'Swap' && tx.success && contractType === 'DEX') {
+            // Extract swap details from events
+            const events = tx.events || [];
+            let fromToken = '';
+            let toToken = '';
+            let fromAmount = '0';
+            let toAmount = '0';
+            
+            for (const event of events) {
+              const eventType = String(event?.type || '');
+              const data = event?.data || {};
+              
+              // Detect withdraw (user paying)
+              if (eventType.includes('WithdrawEvent')) {
+                const coinType = String(data?.coin_type || '');
+                const amount = String(data?.amount || '0');
+                if (coinType && amount && BigInt(amount) > 0n) {
+                  fromToken = coinType.split('::').pop() || 'Unknown';
+                  fromAmount = amount;
+                }
+              }
+              
+              // Detect deposit (user receiving)
+              if (eventType.includes('DepositEvent')) {
+                const coinType = String(data?.coin_type || '');
+                const amount = String(data?.amount || '0');
+                if (coinType && amount && BigInt(amount) > 0n) {
+                  toToken = coinType.split('::').pop() || 'Unknown';
+                  toAmount = amount;
+                }
+              }
+            }
+            
+            // Calculate volume in USD
+            let volumeUsd = 0;
+            if (fromToken && fromAmount) {
+              const price = priceMap.get(fromToken.toUpperCase()) || 0;
+              const amount = Number(formatUnits(fromAmount, 8));
+              volumeUsd = amount * price;
+            }
+            
+            if (fromToken && toToken && volumeUsd > 0) {
+              swapHistory.push({
+                timestamp: iso,
+                protocol: contractName,
+                fromToken,
+                toToken,
+                fromAmount: formatUnits(fromAmount, 8),
+                toAmount: formatUnits(toAmount, 8),
+                volumeUsd
+              });
+              
+              // Update protocol volume
+              const key = `${contractName}::${contractType}`;
+              const prevVolume = protocolVolumes.get(key) || { protocol: contractName, type: contractType, volumeUsd: 0, txCount: 0 };
+              protocolVolumes.set(key, {
+                ...prevVolume,
+                volumeUsd: prevVolume.volumeUsd + volumeUsd,
+                txCount: prevVolume.txCount + 1
+              });
+            }
+          }
+          
+          // Track staking/unstaking activities
+          if ((txType === 'Staking' || txType === 'Unstaking') && tx.success && contractType === 'Staking') {
+            const events = tx.events || [];
+            let amount = '0';
+            
+            for (const event of events) {
+              const data = event?.data || {};
+              const amt = String(data?.amount || '0');
+              if (BigInt(amt) > BigInt(amount)) {
+                amount = amt;
+              }
+            }
+            
+            if (BigInt(amount) > 0n) {
+              stakingActivities.push({
+                protocol: contractName,
+                action: txType === 'Staking' ? 'Stake' : 'Unstake',
+                amount: formatUnits(amount, 8),
+                timestamp: iso
+              });
+            }
+          }
         }
       }
       
       typeCounts.set(txType, (typeCounts.get(txType) || 0) + 1);
     }
+    
+    // Calculate total DeFi volume and unique protocols
+    const protocolVolumesArray = Array.from(protocolVolumes.values());
+    const totalDefiVolumeUsd = protocolVolumesArray.reduce((sum, p) => sum + p.volumeUsd, 0);
+    const uniqueProtocols = new Set(protocolVolumesArray.map(p => p.protocol)).size;
     
     // Format heatmap data
     const activityHeatmap = Array.from(dailyCounts.entries())
@@ -905,6 +1021,7 @@ serve(async (req) => {
       .slice(0, 10);
     
     console.log(`✓ Analytics: ${activityHeatmap.length} active days, ${typeBreakdown.length} tx types, ${topContracts.length} contracts`);
+    console.log(`✓ DeFi Activity: ${swapHistory.length} swaps, ${protocolVolumesArray.length} protocols, $${totalDefiVolumeUsd.toFixed(2)} total volume`);
     
     // Fetch sample transactions for detailed analysis (NFT purchases, activity parsing)
     let transactions: any[] = [];
@@ -1543,6 +1660,13 @@ serve(async (req) => {
         typeBreakdown,
         gasOverTime,
         topContracts
+      },
+      defiActivity: {
+        swapHistory: swapHistory.slice(0, 20), // Limit to most recent 20 swaps
+        protocolVolumes: protocolVolumesArray.sort((a, b) => b.volumeUsd - a.volumeUsd),
+        stakingActivities: stakingActivities.slice(0, 10), // Limit to most recent 10 staking activities
+        totalDefiVolumeUsd,
+        uniqueProtocols
       }
     };
 
