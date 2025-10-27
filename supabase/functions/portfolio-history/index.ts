@@ -208,18 +208,9 @@ serve(async (req) => {
     );
 
     // Build net flows per day per token (true historical balances)
-    // 1) Fetch on-chain activities within range
+    // 1) Fetch on-chain activities within range using fungible_asset_activities only (covers APT and other tokens)
     const activitiesQuery = `
-      query Activities($address: String!, $start: timestamp, $end: timestamp, $assetTypes: [String!]) {
-        coin_activities(
-          where: { owner_address: { _eq: $address }, transaction_timestamp: { _gte: $start, _lte: $end } }
-          order_by: { transaction_timestamp: asc }
-          limit: 10000
-        ) {
-          transaction_timestamp
-          amount
-          activity_type
-        }
+      query Activities($address: String!, $start: timestamptz, $end: timestamptz, $assetTypes: [String!]) {
         fungible_asset_activities(
           where: { owner_address: { _eq: $address }, transaction_timestamp: { _gte: $start, _lte: $end }, asset_type: { _in: $assetTypes } }
           order_by: { transaction_timestamp: asc }
@@ -232,27 +223,19 @@ serve(async (req) => {
       }
     `;
 
-    // Build asset type list for tracked non-APT tokens (include all stables' asset types from raw balances)
-    const cgIdByAssetType = new Map<string, string>();
-    for (const t of rawTokenBalances) {
-      cgIdByAssetType.set(t.assetType, t.coinGeckoId);
-    }
-    const trackedFaaAssets = Array.from(new Set(
-      Array.from(cgIdByAssetType.entries())
-        .filter(([assetType, id]) => id !== 'aptos')
-        .map(([assetType]) => assetType)
-    ));
+    // Build asset type list for tracked tokens (APT + stables + any priced tokens from balances)
+    const trackedAssetTypes = Array.from(new Set(rawTokenBalances.map((t) => t.assetType)));
 
     const startIso = new Date(startDate).toISOString();
     const endIso = new Date(now).toISOString();
 
-    console.log('Fetching activities for range', startIso, '->', endIso, 'assets:', trackedFaaAssets.length);
+    console.log('Fetching activities for range', startIso, '->', endIso, 'assets:', trackedAssetTypes.length);
     const activitiesResp = await fetch(graphqlUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query: activitiesQuery,
-        variables: { address, start: startIso, end: endIso, assetTypes: trackedFaaAssets }
+        variables: { address, start: startIso, end: endIso, assetTypes: trackedAssetTypes }
       })
     });
 
@@ -270,21 +253,16 @@ serve(async (req) => {
       m.set(id, (m.get(id) || 0) + delta);
     };
 
-    // APT via coin_activities
-    const coinActs: Array<{ transaction_timestamp: string; amount: string; activity_type: string }> = activitiesData.data?.coin_activities || [];
-    for (const a of coinActs) {
-      const dateStr = (a.transaction_timestamp || '').split('T')[0];
-      const amtUnits = Number(formatUnits(a.amount, 8));
-      const sign = a.activity_type === 'deposit' ? 1 : -1;
-      addFlow(dateStr, 'aptos', sign * amtUnits);
-    }
+    // APT flows are included via fungible_asset_activities (asset_type = 0x1::aptos_coin::AptosCoin)
 
     // Other tokens via fungible_asset_activities (amount may be signed)
+    const idByAssetType = new Map<string, string>();
+    for (const t of rawTokenBalances) { idByAssetType.set(t.assetType, t.coinGeckoId); }
     const faActs: Array<{ transaction_timestamp: string; amount: string; asset_type: string }> = activitiesData.data?.fungible_asset_activities || [];
     for (const a of faActs) {
       const dateStr = (a.transaction_timestamp || '').split('T')[0];
       const assetType = String(a.asset_type || '');
-      const id = cgIdByAssetType.get(assetType);
+      const id = idByAssetType.get(assetType);
       if (!id) continue;
       const decimals = decimalsByAsset.get(assetType) ?? 8;
       const amtStr = String(a.amount ?? '0').trim();
