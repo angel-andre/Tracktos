@@ -837,151 +837,183 @@ serve(async (req) => {
       
       // Categorize transaction type
       let txType = 'Other';
+      let isDexSwap = false;
+      let isStakingActivity = false;
+      
       if (tx.payload?.type === 'entry_function_payload' && tx.payload.function) {
         const func = tx.payload.function.toLowerCase();
+        const funcParts = tx.payload.function.split('::');
+        const contractAddr = funcParts[0] || '';
+        const module = funcParts[1] || '';
+        const functionName = funcParts[2] || '';
+        
+        // Enhanced protocol detection
+        let contractName = 'Unknown Contract';
+        let contractType = 'DeFi';
+        
+        // DEX Protocol Detection
+        if (contractAddr.includes('190d44266241744264b964a37b8f09863167a12d3e70cda39376cfb4e3561e12') ||
+            module.includes('scripts') && functionName.includes('swap')) {
+          contractName = 'PancakeSwap';
+          contractType = 'DEX';
+          isDexSwap = true;
+        } else if (contractAddr.includes('liquidswap') || module.includes('liquidswap') || module.includes('scripts_v2')) {
+          contractName = 'LiquidSwap';
+          contractType = 'DEX';
+          isDexSwap = true;
+        } else if (contractAddr.includes('thala') || module.includes('thala') || module.includes('amm')) {
+          contractName = 'Thala';
+          contractType = 'DEX';
+          isDexSwap = true;
+        } else if (contractAddr.includes('aries') || module.includes('aries')) {
+          contractName = 'Aries Markets';
+          contractType = 'Lending';
+        } else if (contractAddr.includes('tortuga') || module.includes('tortuga')) {
+          contractName = 'Tortuga';
+          contractType = 'Staking';
+          isStakingActivity = true;
+        } else if (contractAddr.includes('ditto') || module.includes('ditto')) {
+          contractName = 'Ditto';
+          contractType = 'Staking';
+          isStakingActivity = true;
+        } else if (contractAddr === '0x1' && module === 'staking_contract') {
+          contractName = 'Aptos Staking';
+          contractType = 'Staking';
+          isStakingActivity = true;
+        } else if (module.includes('router') || module.includes('swap')) {
+          contractName = module.charAt(0).toUpperCase() + module.slice(1);
+          contractType = 'DEX';
+          isDexSwap = true;
+        } else if (module.includes('stake')) {
+          contractName = 'Staking Protocol';
+          contractType = 'Staking';
+          isStakingActivity = true;
+        } else if (module.includes('coin')) {
+          contractName = 'Coin Operations';
+          contractType = 'Transfer';
+        } else if (module.includes('token')) {
+          contractName = 'NFT Operations';
+          contractType = 'NFT';
+        } else {
+          contractName = `${module.charAt(0).toUpperCase() + module.slice(1)}`;
+        }
+        
+        // Transaction type classification
         if (func.includes('transfer') || func.includes('send')) {
           txType = 'Transfer';
-        } else if (func.includes('swap') || func.includes('trade')) {
+        } else if (func.includes('swap') || func.includes('trade') || isDexSwap) {
           txType = 'Swap';
         } else if (func.includes('mint')) {
           txType = 'NFT Mint';
-        } else if (func.includes('stake')) {
+        } else if (func.includes('stake') && !func.includes('unstake')) {
           txType = 'Staking';
-        } else if (func.includes('unstake')) {
+          isStakingActivity = true;
+        } else if (func.includes('unstake') || func.includes('withdraw_stake')) {
           txType = 'Unstaking';
+          isStakingActivity = true;
         } else if (func.includes('claim')) {
           txType = 'Claim';
         }
         
-        // Track contract interactions and DeFi activities
-        const funcParts = tx.payload.function.split('::');
-        if (funcParts.length >= 2) {
-          const contractAddr = funcParts[0];
-          const module = funcParts[1];
+        const existing = contractCounts.get(contractAddr) || { name: contractName, count: 0, type: contractType };
+        contractCounts.set(contractAddr, { ...existing, count: existing.count + 1 });
+        
+        // Extract swap data - look for any transaction with token movements
+        if (tx.success && (isDexSwap || txType === 'Swap' || contractType === 'DEX')) {
+          // Extract swap details from events
+          const events = tx.events || [];
+          let fromToken = '';
+          let toToken = '';
+          let fromAmount = '0';
+          let toAmount = '0';
           
-          // Identify known protocols
-          let contractName = 'Unknown Contract';
-          let contractType = 'DeFi';
-          
-          if (contractAddr.includes('pancake') || module.includes('pancake')) {
-            contractName = 'PancakeSwap';
-            contractType = 'DEX';
-          } else if (contractAddr.includes('liquidswap') || module.includes('liquidswap')) {
-            contractName = 'LiquidSwap';
-            contractType = 'DEX';
-          } else if (contractAddr.includes('thala') || module.includes('thala')) {
-            contractName = 'Thala';
-            contractType = 'DEX';
-          } else if (contractAddr.includes('aries') || module.includes('aries')) {
-            contractName = 'Aries Markets';
-            contractType = 'Lending';
-          } else if (contractAddr.includes('tortuga') || module.includes('tortuga')) {
-            contractName = 'Tortuga';
-            contractType = 'Staking';
-          } else if (contractAddr.includes('ditto') || module.includes('ditto')) {
-            contractName = 'Ditto';
-            contractType = 'Staking';
-          } else if (module.includes('stake')) {
-            contractName = 'Staking Protocol';
-            contractType = 'Staking';
-          } else if (module.includes('coin')) {
-            contractName = 'Coin Operations';
-            contractType = 'Transfer';
-          } else if (module.includes('token')) {
-            contractName = 'NFT Operations';
-            contractType = 'NFT';
-          } else {
-            contractName = `${module.charAt(0).toUpperCase() + module.slice(1)}`;
-          }
-          
-          const existing = contractCounts.get(contractAddr) || { name: contractName, count: 0, type: contractType };
-          contractCounts.set(contractAddr, { ...existing, count: existing.count + 1 });
-          
-          // Extract DeFi-specific data
-          if (txType === 'Swap' && tx.success && contractType === 'DEX') {
-            // Extract swap details from events
-            const events = tx.events || [];
-            let fromToken = '';
-            let toToken = '';
-            let fromAmount = '0';
-            let toAmount = '0';
+          for (const event of events) {
+            const eventType = String(event?.type || '');
+            const data = event?.data || {};
             
-            for (const event of events) {
-              const eventType = String(event?.type || '');
-              const data = event?.data || {};
-              
-              // Detect withdraw (user paying)
-              if (eventType.includes('WithdrawEvent')) {
-                const coinType = String(data?.coin_type || '');
-                const amount = String(data?.amount || '0');
-                if (coinType && amount && BigInt(amount) > 0n) {
-                  fromToken = coinType.split('::').pop() || 'Unknown';
-                  fromAmount = amount;
-                }
-              }
-              
-              // Detect deposit (user receiving)
-              if (eventType.includes('DepositEvent')) {
-                const coinType = String(data?.coin_type || '');
-                const amount = String(data?.amount || '0');
-                if (coinType && amount && BigInt(amount) > 0n) {
-                  toToken = coinType.split('::').pop() || 'Unknown';
-                  toAmount = amount;
-                }
+            // Detect withdraw/sent coins (user paying)
+            if (eventType.includes('WithdrawEvent') || eventType.includes('0x1::coin::WithdrawEvent')) {
+              const coinType = String(data?.coin_type || data?.type_info?.type || '');
+              const amount = String(data?.amount || '0');
+              if (coinType && amount && BigInt(amount) > 0n && !fromToken) {
+                fromToken = coinType.split('::').pop()?.replace(/>/g, '') || 'Unknown';
+                fromAmount = amount;
               }
             }
             
-            // Calculate volume in USD
-            let volumeUsd = 0;
-            if (fromToken && fromAmount) {
-              const price = priceMap.get(fromToken.toUpperCase()) || 0;
-              const amount = Number(formatUnits(fromAmount, 8));
-              volumeUsd = amount * price;
-            }
-            
-            if (fromToken && toToken && volumeUsd > 0) {
-              swapHistory.push({
-                timestamp: iso,
-                protocol: contractName,
-                fromToken,
-                toToken,
-                fromAmount: formatUnits(fromAmount, 8),
-                toAmount: formatUnits(toAmount, 8),
-                volumeUsd
-              });
-              
-              // Update protocol volume
-              const key = `${contractName}::${contractType}`;
-              const prevVolume = protocolVolumes.get(key) || { protocol: contractName, type: contractType, volumeUsd: 0, txCount: 0 };
-              protocolVolumes.set(key, {
-                ...prevVolume,
-                volumeUsd: prevVolume.volumeUsd + volumeUsd,
-                txCount: prevVolume.txCount + 1
-              });
+            // Detect deposit/received coins (user receiving)
+            if (eventType.includes('DepositEvent') || eventType.includes('0x1::coin::DepositEvent')) {
+              const coinType = String(data?.coin_type || data?.type_info?.type || '');
+              const amount = String(data?.amount || '0');
+              if (coinType && amount && BigInt(amount) > 0n && !toToken) {
+                toToken = coinType.split('::').pop()?.replace(/>/g, '') || 'Unknown';
+                toAmount = amount;
+              }
             }
           }
           
-          // Track staking/unstaking activities
-          if ((txType === 'Staking' || txType === 'Unstaking') && tx.success && contractType === 'Staking') {
-            const events = tx.events || [];
-            let amount = '0';
+          // Calculate volume in USD (try both tokens)
+          let volumeUsd = 0;
+          if (fromToken && fromAmount) {
+            const price = priceMap.get(fromToken.toUpperCase()) || 0;
+            const amount = Number(formatUnits(fromAmount, 8));
+            volumeUsd = amount * price;
+          }
+          if (volumeUsd === 0 && toToken && toAmount) {
+            const price = priceMap.get(toToken.toUpperCase()) || 0;
+            const amount = Number(formatUnits(toAmount, 8));
+            volumeUsd = amount * price;
+          }
+          
+          // Record swap even if volumeUsd is 0 (we still want to see the activity)
+          if (fromToken && toToken && fromToken !== toToken) {
+            swapHistory.push({
+              timestamp: iso,
+              protocol: contractName,
+              fromToken,
+              toToken,
+              fromAmount: formatUnits(fromAmount, 8),
+              toAmount: formatUnits(toAmount, 8),
+              volumeUsd
+            });
             
-            for (const event of events) {
-              const data = event?.data || {};
-              const amt = String(data?.amount || '0');
+            // Update protocol volume
+            const key = `${contractName}::${contractType}`;
+            const prevVolume = protocolVolumes.get(key) || { protocol: contractName, type: contractType, volumeUsd: 0, txCount: 0 };
+            protocolVolumes.set(key, {
+              ...prevVolume,
+              volumeUsd: prevVolume.volumeUsd + volumeUsd,
+              txCount: prevVolume.txCount + 1
+            });
+          }
+        }
+        
+        // Track staking/unstaking activities
+        if (tx.success && (isStakingActivity || txType === 'Staking' || txType === 'Unstaking')) {
+          const events = tx.events || [];
+          let amount = '0';
+          
+          for (const event of events) {
+            const eventType = String(event?.type || '');
+            const data = event?.data || {};
+            
+            // Look for stake/unstake amounts in various event types
+            if (eventType.includes('StakeEvent') || eventType.includes('UnstakeEvent') ||
+                eventType.includes('DepositEvent') || eventType.includes('WithdrawEvent')) {
+              const amt = String(data?.amount || data?.coins_amount || '0');
               if (BigInt(amt) > BigInt(amount)) {
                 amount = amt;
               }
             }
-            
-            if (BigInt(amount) > 0n) {
-              stakingActivities.push({
-                protocol: contractName,
-                action: txType === 'Staking' ? 'Stake' : 'Unstake',
-                amount: formatUnits(amount, 8),
-                timestamp: iso
-              });
-            }
+          }
+          
+          if (BigInt(amount) > 0n) {
+            stakingActivities.push({
+              protocol: contractName,
+              action: txType === 'Unstaking' ? 'Unstake' : 'Stake',
+              amount: formatUnits(amount, 8),
+              timestamp: iso
+            });
           }
         }
       }
