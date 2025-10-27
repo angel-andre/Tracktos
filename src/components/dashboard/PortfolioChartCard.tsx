@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 
 interface PortfolioChartCardProps {
   address: string;
+  currentTotalUsdValue?: number;
 }
 
 interface HistoricalDataPoint {
@@ -16,7 +17,7 @@ interface HistoricalDataPoint {
 
 type Timeframe = '7D' | '30D' | '90D';
 
-export function PortfolioChartCard({ address }: PortfolioChartCardProps) {
+export function PortfolioChartCard({ address, currentTotalUsdValue }: PortfolioChartCardProps) {
   const [timeframe, setTimeframe] = useState<Timeframe>('30D');
   const [data, setData] = useState<HistoricalDataPoint[]>([]);
   const [loading, setLoading] = useState(false);
@@ -38,7 +39,19 @@ export function PortfolioChartCard({ address }: PortfolioChartCardProps) {
           setData([]);
         } else {
           console.log('Portfolio history data:', historyData);
-          setData(historyData || []);
+          // Align today's value with Token Holdings total to keep sources consistent
+          let processed = (historyData as HistoricalDataPoint[]) || [];
+          if (typeof currentTotalUsdValue === 'number' && isFinite(currentTotalUsdValue)) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const idx = processed.findIndex(p => p.date === todayStr);
+            if (idx >= 0) {
+              processed = [...processed];
+              processed[idx] = { ...processed[idx], value: currentTotalUsdValue };
+            } else {
+              processed = [...processed, { date: todayStr, value: currentTotalUsdValue }];
+            }
+          }
+          setData(processed);
         }
       } catch (error) {
         console.error('Error:', error);

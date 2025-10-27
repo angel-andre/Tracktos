@@ -197,7 +197,7 @@ export default function IndexPage() {
           {/* Portfolio History Chart - spans 2 columns on large screens */}
           {data && (
             <div className="lg:col-span-2">
-              <PortfolioChartCard address={address} />
+              <PortfolioChartCard address={address} currentTotalUsdValue={data.totalUsdValue} />
             </div>
           )}
         </div>
