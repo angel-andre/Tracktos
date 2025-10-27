@@ -8,6 +8,8 @@ interface AccountData {
   address: string;
   aptBalance: string;
   stakedApt: string;
+  firstTransactionTimestamp?: string;
+  lastTransactionTimestamp?: string;
 }
 
 interface AccountCardProps {
@@ -131,6 +133,36 @@ export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0,
                 <p className="text-xl font-bold text-foreground">{formatCount(nftCount)}</p>
               </div>
             </div>
+
+            {/* Wallet Timeline Stats */}
+            {(data.firstTransactionTimestamp || data.lastTransactionTimestamp) && (
+              <div className="grid grid-cols-2 gap-4">
+                {data.firstTransactionTimestamp && (
+                  <div className="p-4 rounded-lg bg-secondary/20 border border-border/30">
+                    <p className="text-sm text-muted-foreground mb-1">Wallet Start Date</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {new Date(data.firstTransactionTimestamp).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                      })}
+                    </p>
+                  </div>
+                )}
+                {data.lastTransactionTimestamp && (
+                  <div className="p-4 rounded-lg bg-secondary/20 border border-border/30">
+                    <p className="text-sm text-muted-foreground mb-1">Last Transaction</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {new Date(data.lastTransactionTimestamp).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                      })}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Sentiment Indicator */}
             <div className="p-4 rounded-lg bg-gradient-to-br from-primary/5 to-accent/5 border border-border/30">

@@ -10,6 +10,8 @@ interface AptosResponse {
     address: string;
     aptBalance: string;
     stakedApt: string;
+    firstTransactionTimestamp?: string;
+    lastTransactionTimestamp?: string;
   };
   tokens: Array<{
     name: string;
@@ -356,6 +358,8 @@ serve(async (req) => {
     const nftPriceMap = new Map<string, { price: string; hash: string }>();
     let matchedByTokenId = 0;
     let matchedByNameCollection = 0;
+    let firstTransactionTimestamp = '';
+    let lastTransactionTimestamp = '';
     
     // Fetch more transactions to find NFT purchases (limit increased for better coverage)
     const txUrl = `${fullnodeBase}/accounts/${address}/transactions?limit=300`;
@@ -468,6 +472,13 @@ serve(async (req) => {
         success: tx.success !== false,
         timestamp: tx.timestamp || new Date().toISOString()
       }));
+      
+      // Extract first and last transaction timestamps
+      if (transactions.length > 0) {
+        lastTransactionTimestamp = transactions[0]?.timestamp || '';
+        firstTransactionTimestamp = transactions[transactions.length - 1]?.timestamp || '';
+      }
+      
       console.log('✓ Recent transactions fetched:', activity.length);
       console.log('✓ NFT prices found:', nftPriceMap.size, 'byTokenId:', matchedByTokenId, 'byNameCollection:', matchedByNameCollection);
     }
@@ -593,7 +604,9 @@ serve(async (req) => {
       account: {
         address,
         aptBalance,
-        stakedApt
+        stakedApt,
+        firstTransactionTimestamp: firstTransactionTimestamp || undefined,
+        lastTransactionTimestamp: lastTransactionTimestamp || undefined
       },
       tokens: topTokens,
       nfts: sortedNfts.slice(0, 10),

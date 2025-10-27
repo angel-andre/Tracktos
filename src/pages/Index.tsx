@@ -14,6 +14,8 @@ interface AccountData {
   address: string;
   aptBalance: string;
   stakedApt: string;
+  firstTransactionTimestamp?: string;
+  lastTransactionTimestamp?: string;
 }
 
 interface Token {
