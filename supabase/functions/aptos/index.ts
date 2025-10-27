@@ -605,13 +605,14 @@ serve(async (req) => {
       };
     });
 
-    // Add APT to the tokens list
+    // Add APT to the tokens list (combine liquid + staked)
     const aptPrice = priceMap.get('APT') || 0;
-    const aptUsdValue = parseFloat(aptBalance) * aptPrice;
+    const totalAptBalance = parseFloat(aptBalance) + parseFloat(stakedApt);
+    const aptUsdValue = totalAptBalance * aptPrice;
     tokensWithUsd.push({
       name: 'Aptos Coin',
       symbol: 'APT',
-      balance: aptBalance,
+      balance: totalAptBalance.toString(),
       usdPrice: aptPrice,
       usdValue: aptUsdValue,
       logoUrl: logoUrls['APT'] || ''
@@ -623,7 +624,8 @@ serve(async (req) => {
       return Number(b.balance) - Number(a.balance);
     });
     
-    const topTokens = tokensWithUsd.slice(0, 10);
+    // Take top 20 tokens to ensure we don't miss any significant holdings
+    const topTokens = tokensWithUsd.slice(0, 20);
     
     // Calculate total USD value from all top tokens (APT now included)
     const totalUsdValue = topTokens.reduce((sum, token) => sum + token.usdValue, 0);
