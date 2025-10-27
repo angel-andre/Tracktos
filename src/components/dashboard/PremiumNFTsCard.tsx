@@ -72,6 +72,7 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
   const [loaded, setLoaded] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
   const [finalSrc, setFinalSrc] = React.useState<string | null>(null);
+  const loadedRef = React.useRef(false);
   const src = srcs[i];
 
   React.useEffect(() => {
@@ -79,6 +80,7 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
     setFailed(false);
     setFinalSrc(null);
     let cancelled = false;
+    loadedRef.current = false;
 
     const advance = () => {
       setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
@@ -134,7 +136,7 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
     loadImage();
 
     const timer = setTimeout(() => {
-      if (!loaded && !cancelled) {
+      if (!loadedRef.current && !cancelled) {
         setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
       }
     }, 8000);
@@ -143,7 +145,7 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [src, srcs.length, loaded]);
+  }, [src, srcs.length]);
 
   const onError = () => {
     setI((prev) => {
@@ -153,7 +155,7 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
       return prev;
     });
   };
-  const onLoad = () => setLoaded(true);
+  const onLoad = () => { setLoaded(true); loadedRef.current = true; };
 
   if (failed || !src) {
     return <ImageIcon className="w-12 h-12 text-muted-foreground" />;
