@@ -239,10 +239,10 @@ export default function IndexPage() {
             </TabsContent>
 
             <TabsContent value="activity" className="space-y-6">
-              <ActivityCard activity={data?.activity || null} loading={loading} />
               {data?.transactionAnalytics && (
                 <TransactionAnalyticsCard analytics={data.transactionAnalytics} />
               )}
+              <ActivityCard activity={data?.activity || null} loading={loading} />
             </TabsContent>
 
             <TabsContent value="defi" className="space-y-6">
