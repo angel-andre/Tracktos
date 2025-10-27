@@ -409,6 +409,46 @@ serve(async (req) => {
         }
       }
 
+      // Fallback: For tokens missing from CoinGecko, try DexScreener (Aptos chain only)
+      const missingIds = ids.filter((id) => !nowPrices.has(id));
+      if (missingIds.length > 0) {
+        // Build id -> symbol map
+        const symbolById = new Map<string, string>();
+        for (const t of uniqueTokenBalances) {
+          symbolById.set(t.coinGeckoId, t.symbol);
+        }
+        try {
+          const dexResults = await Promise.all(
+            missingIds.map(async (id) => {
+              const sym = symbolById.get(id);
+              if (!sym) return null;
+              try {
+                const dexUrl = `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(sym)}%20aptos`;
+                const dexResp = await fetch(dexUrl);
+                if (dexResp.ok) {
+                  const dexData = await dexResp.json();
+                  const pairs = dexData?.pairs || [];
+                  const aptPair = pairs.find((p: any) => p.chainId === 'aptos' && p.priceUsd && (p.baseToken?.symbol === sym || p.quoteToken?.symbol === sym));
+                  if (aptPair?.priceUsd) {
+                    const price = parseFloat(aptPair.priceUsd);
+                    console.log(`✓ Live price for ${sym} from DexScreener: $${price}`);
+                    return { id, price };
+                  }
+                }
+              } catch (e) {
+                console.log(`DexScreener error for ${sym}:`, e);
+              }
+              return null;
+            })
+          );
+          for (const r of dexResults) {
+            if (r) nowPrices.set(r.id, r.price);
+          }
+        } catch (e) {
+          console.log('DexScreener parallel fetch error:', e);
+        }
+      }
+
       const gotLive = nowPrices.size > 0;
 
       let snapshot = 0;
