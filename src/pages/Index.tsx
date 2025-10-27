@@ -38,6 +38,8 @@ interface AptosData {
   tokens: Token[];
   nfts: NFT[];
   activity: Transaction[];
+  totalNftCount: number;
+  totalTransactionCount: number;
 }
 
 export default function IndexPage() {
@@ -160,8 +162,8 @@ export default function IndexPage() {
             <AccountCard 
               data={data?.account || null} 
               loading={loading}
-              transactionCount={data?.activity?.length || 0}
-              nftCount={data?.nfts?.length || 0}
+              transactionCount={data?.totalTransactionCount || 0}
+              nftCount={data?.totalNftCount || 0}
               tokenCount={data?.tokens?.length || 0}
             />
             <TokensCard tokens={data?.tokens || null} loading={loading} />

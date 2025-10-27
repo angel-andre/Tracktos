@@ -27,6 +27,8 @@ interface AptosResponse {
     success: boolean;
     timestamp: string;
   }>;
+  totalNftCount: number;
+  totalTransactionCount: number;
 }
 
 serve(async (req) => {
@@ -78,6 +80,11 @@ serve(async (req) => {
             current_collection {
               collection_name
             }
+          }
+        }
+        current_token_ownerships_v2_aggregate(where: {owner_address: {_eq: $address}, amount: {_gt: "0"}}) {
+          aggregate {
+            count
           }
         }
         delegated_staking_activities(
@@ -313,12 +320,32 @@ serve(async (req) => {
     tokens.sort((a, b) => Number(b.balance) - Number(a.balance));
     const topTokens = tokens.slice(0, 10);
 
-    // Fetch transactions
+    // Get total NFT count
+    const totalNftCount = data.current_token_ownerships_v2_aggregate?.aggregate?.count || 0;
+
+    // Fetch transactions and get total count
     console.log('Fetching transactions...');
-    const txUrl = network === 'testnet'
-      ? `https://indexer-testnet.staging.gcp.aptosdev.com/v1/accounts/${address}/transactions?limit=5`
-      : `https://api.mainnet.aptoslabs.com/v1/accounts/${address}/transactions?limit=5`;
+    const fullnodeBase = network === 'testnet' 
+      ? 'https://fullnode.testnet.aptoslabs.com/v1' 
+      : 'https://fullnode.mainnet.aptoslabs.com/v1';
     
+    // Get total transaction count
+    let totalTransactionCount = 0;
+    try {
+      const accountResp = await fetch(`${fullnodeBase}/accounts/${address}`, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (accountResp.ok) {
+        const accountData = await accountResp.json();
+        totalTransactionCount = parseInt(accountData.sequence_number || '0', 10);
+        console.log('✓ Total transactions:', totalTransactionCount);
+      }
+    } catch (e) {
+      console.log('Failed to fetch total transaction count:', e);
+    }
+
+    // Fetch recent transactions for display
+    const txUrl = `${fullnodeBase}/accounts/${address}/transactions?limit=5`;
     const txResp = await fetch(txUrl, { headers: { 'Accept': 'application/json' } });
     
     let activity: Array<{ hash: string; type: string; success: boolean; timestamp: string }> = [];
@@ -330,7 +357,7 @@ serve(async (req) => {
         success: tx.success !== false,
         timestamp: tx.timestamp || new Date().toISOString()
       }));
-      console.log('✓ Transactions:', activity.length);
+      console.log('✓ Recent transactions fetched:', activity.length);
     }
 
     const response: AptosResponse = {
@@ -341,15 +368,17 @@ serve(async (req) => {
       },
       tokens: topTokens,
       nfts: nfts.slice(0, 10),
-      activity
+      activity,
+      totalNftCount,
+      totalTransactionCount
     };
 
     console.log('Returning:', {
       apt: aptBalance,
       staked: stakedApt,
       tokens: topTokens.length,
-      nfts: nfts.length,
-      txs: activity.length
+      nfts: totalNftCount,
+      txs: totalTransactionCount
     });
 
     return new Response(
