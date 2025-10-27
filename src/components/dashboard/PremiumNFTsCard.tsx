@@ -2,6 +2,7 @@ import React from "react";
 import { Gem, ImageIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatNumber } from "@/lib/formatters";
 
 interface NFT {
   name: string;
@@ -185,7 +186,7 @@ export function PremiumNFTsCard({ nfts, loading }: PremiumNFTsCardProps) {
                   <p className="text-sm font-bold text-foreground truncate">{nft.name}</p>
                   <p className="text-xs text-muted-foreground truncate">{nft.collection}</p>
                   {nft.price && (
-                    <p className="text-xs text-primary font-semibold mt-1">{nft.price}</p>
+                    <p className="text-xs text-primary font-semibold mt-1">{formatNumber(nft.price, 2)}</p>
                   )}
                 </div>
               </div>

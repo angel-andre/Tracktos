@@ -1,6 +1,7 @@
 import { Coins } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatNumber } from "@/lib/formatters";
 
 interface Token {
   name: string;
@@ -58,7 +59,7 @@ export function TokensCard({ tokens, loading }: TokensCardProps) {
                   <p className="font-semibold text-foreground">{token.symbol}</p>
                   <p className="text-xs text-muted-foreground">{token.name}</p>
                 </div>
-                <p className="font-mono text-sm text-foreground font-medium">{token.balance}</p>
+                <p className="font-mono text-sm text-foreground font-medium">{formatNumber(token.balance, 4)}</p>
               </div>
             ))}
           </div>

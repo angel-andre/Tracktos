@@ -2,6 +2,7 @@ import { Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatTokenAmount, formatCount } from "@/lib/formatters";
 
 interface AccountData {
   address: string;
@@ -109,12 +110,12 @@ export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0,
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="p-4 rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20">
                 <p className="text-sm text-muted-foreground mb-1">Liquid Balance</p>
-                <p className="text-2xl font-bold text-primary">{data.aptBalance} APT</p>
+                <p className="text-2xl font-bold text-primary">{formatTokenAmount(data.aptBalance, 'APT')}</p>
               </div>
               {data.stakedApt !== '0' && (
                 <div className="p-4 rounded-lg bg-gradient-to-br from-accent/10 to-accent/5 border border-accent/20">
                   <p className="text-sm text-muted-foreground mb-1">Staked</p>
-                  <p className="text-2xl font-bold text-accent">{data.stakedApt} APT</p>
+                  <p className="text-2xl font-bold text-accent">{formatTokenAmount(data.stakedApt, 'APT')}</p>
                 </div>
               )}
             </div>
@@ -123,11 +124,11 @@ export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0,
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 rounded-lg bg-secondary/20 border border-border/30">
                 <p className="text-sm text-muted-foreground mb-1">Transactions</p>
-                <p className="text-xl font-bold text-foreground">{transactionCount}</p>
+                <p className="text-xl font-bold text-foreground">{formatCount(transactionCount)}</p>
               </div>
               <div className="p-4 rounded-lg bg-secondary/20 border border-border/30">
                 <p className="text-sm text-muted-foreground mb-1">NFTs</p>
-                <p className="text-xl font-bold text-foreground">{nftCount}</p>
+                <p className="text-xl font-bold text-foreground">{formatCount(nftCount)}</p>
               </div>
             </div>
 
