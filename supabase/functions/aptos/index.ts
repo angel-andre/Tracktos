@@ -29,6 +29,7 @@ interface AptosResponse {
     image: string;
     price?: string;
     purchaseHash?: string;
+    tokenDataId?: string;
   }>;
   activity: Array<{
     hash: string;
