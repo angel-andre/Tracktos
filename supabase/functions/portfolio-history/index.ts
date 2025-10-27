@@ -97,9 +97,9 @@ serve(async (req) => {
       if (assetType === '0x1::aptos_coin::AptosCoin' || symbol === 'APT') return 'aptos';
       return null;
     };
-    const getAptosContractAddress = (assetType: string): string | null => {
-      const addr = String(assetType || '').split('::')[0];
-      return addr ? addr.toLowerCase() : null;
+    const normalizeAptosAssetType = (assetType: string): string | null => {
+      const t = String(assetType || '').trim().toLowerCase();
+      return t || null;
     };
     const isStableUsd = (symbol: string): boolean => symbol === 'USDC' || symbol === 'USDT';
 
@@ -160,8 +160,8 @@ serve(async (req) => {
 
       // If not APT/stable, try to map by Aptos contract address via CoinGecko platforms
       if (!cgId) {
-        const addr = getAptosContractAddress(assetType);
-        if (addr) cgId = aptosPlatformMap.get(addr) || null;
+        const key = normalizeAptosAssetType(assetType);
+        if (key) cgId = aptosPlatformMap.get(key) || null;
       }
 
       if (cgId) {
