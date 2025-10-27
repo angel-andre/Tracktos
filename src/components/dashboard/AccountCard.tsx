@@ -10,6 +10,8 @@ interface AccountData {
   stakedApt: string;
   firstTransactionTimestamp?: string;
   lastTransactionTimestamp?: string;
+  usdChange24h: number;
+  percentChange24h: number;
 }
 
 interface AccountCardProps {
@@ -113,6 +115,28 @@ export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0,
               <div className="p-4 rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20">
                 <p className="text-sm text-muted-foreground mb-1">Liquid Balance</p>
                 <p className="text-2xl font-bold text-primary">{formatTokenAmount(data.aptBalance, 'APT')}</p>
+                {data.usdChange24h !== undefined && (
+                  <p className={`text-sm font-semibold mt-1 ${
+                    data.usdChange24h > 0 
+                      ? 'text-green-500' 
+                      : data.usdChange24h < 0 
+                        ? 'text-red-500' 
+                        : 'text-muted-foreground'
+                  }`}>
+                    {data.usdChange24h > 0 ? '+' : ''}
+                    {new Intl.NumberFormat('en-US', { 
+                      style: 'currency', 
+                      currency: 'USD',
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2
+                    }).format(data.usdChange24h)}
+                    {' '}
+                    ({data.percentChange24h > 0 ? '+' : ''}{new Intl.NumberFormat('en-US', {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1
+                    }).format(data.percentChange24h)}%)
+                  </p>
+                )}
               </div>
               {data.stakedApt !== '0' && (
                 <div className="p-4 rounded-lg bg-gradient-to-br from-accent/10 to-accent/5 border border-accent/20">

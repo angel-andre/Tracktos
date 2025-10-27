@@ -16,6 +16,8 @@ interface AccountData {
   stakedApt: string;
   firstTransactionTimestamp?: string;
   lastTransactionTimestamp?: string;
+  usdChange24h: number;
+  percentChange24h: number;
 }
 
 interface Token {
