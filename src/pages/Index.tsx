@@ -99,11 +99,11 @@ export default function IndexPage() {
           <div className="flex items-center justify-center gap-3 mb-2">
             <img src={aptosLogo} alt="Aptos Logo" className="w-10 h-10" />
             <h1 className="text-4xl font-bold text-white">
-              Aptos Journey
+              Tracktos
             </h1>
             <Sparkles className="w-6 h-6 text-primary" />
           </div>
-          <p className="text-muted-foreground">Explore wallet analytics and insights</p>
+          <p className="text-muted-foreground">explore your Aptos Journey through wallet analytics and insights</p>
         </div>
 
         {/* Control Panel */}
