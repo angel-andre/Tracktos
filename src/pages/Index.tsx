@@ -1,184 +1,181 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AccountCard } from "@/components/dashboard/AccountCard";
-import { TokensCard } from "@/components/dashboard/TokensCard";
-import { ActivityCard } from "@/components/dashboard/ActivityCard";
-import { NFTsCard } from "@/components/dashboard/NFTsCard";
-import aptosLogo from "@/assets/aptos-logo.png";
+import { useToast } from "@/hooks/use-toast";
+import JourneyCard from "@/components/JourneyCard";
+import { Loader2, Sparkles } from "lucide-react";
 
-interface AccountData {
+interface JourneyData {
   address: string;
-  aptBalance: string;
-  stakedApt: string;
+  totalTransactions: number;
+  firstTransactionDate: string;
+  nftCount: number;
 }
 
-interface Token {
-  name: string;
-  symbol: string;
-  balance: string;
-}
-
-interface NFT {
-  name: string;
-  collection: string;
-  image: string;
-}
-
-interface Transaction {
-  hash: string;
-  type: string;
-  success: boolean;
-  timestamp: string;
-}
-
-interface AptosData {
-  account: AccountData;
-  tokens: Token[];
-  nfts: NFT[];
-  activity: Transaction[];
-  totalNftCount: number;
-  totalTransactionCount: number;
-}
-
-export default function IndexPage() {
+const Index = () => {
   const [address, setAddress] = useState("");
-  const [network, setNetwork] = useState<"mainnet" | "testnet">("mainnet");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [data, setData] = useState<AptosData | null>(null);
+  const [journeyData, setJourneyData] = useState<JourneyData | null>(null);
+  const { toast } = useToast();
 
-  const loadStats = async () => {
+  const isValidAddress = (addr: string) => {
+    return addr.startsWith("0x") && addr.length === 66;
+  };
+
+  const fetchAptosData = async () => {
     if (!address.trim()) {
-      setError("Please enter a wallet address");
+      toast({
+        title: "Error",
+        description: "Please enter a wallet address",
+        variant: "destructive",
+      });
       return;
     }
 
-    setError("");
+    if (!isValidAddress(address)) {
+      toast({
+        title: "Invalid Address",
+        description: "Please enter a valid Aptos address (starts with 0x, 66 characters)",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
-    setData(null);
 
     try {
-      const { data: responseData, error: functionError } = await supabase.functions.invoke(
-        'aptos',
-        {
-          body: { address: address.trim(), network },
-        }
+      // Fetch account transactions
+      const txResponse = await fetch(
+        `https://api.mainnet.aptoslabs.com/v1/accounts/${address}/transactions?limit=1000`,
       );
 
-      if (functionError) {
-        throw new Error(functionError.message);
+      if (!txResponse.ok) {
+        throw new Error("Failed to fetch transaction data");
       }
 
-      if (responseData.error) {
-        throw new Error(responseData.error);
+      const transactions = await txResponse.json();
+      const totalTransactions = transactions.length;
+
+      // Get first transaction timestamp
+      let firstTransactionDate = "N/A";
+      if (transactions.length > 0) {
+        const firstTx = transactions[transactions.length - 1];
+        const timestamp = parseInt(firstTx.timestamp) / 1000000; // Convert microseconds to milliseconds
+        firstTransactionDate = new Date(timestamp).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        });
       }
 
-      setData(responseData as AptosData);
-    } catch (err: any) {
-      console.error("Error fetching Aptos data:", err);
-      setError(err.message || "Failed to load wallet data. Please check the address and try again.");
+      // Fetch NFTs using Aptos Indexer GraphQL API
+      const nftQuery = `
+        query GetAccountNFTs($address: String!) {
+          current_token_ownerships_v2(
+            where: {
+              owner_address: {_eq: $address},
+              amount: {_gt: "0"}
+            }
+          ) {
+            amount
+          }
+        }
+      `;
+
+      const nftResponse = await fetch("https://api.mainnet.aptoslabs.com/v1/graphql", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: nftQuery,
+          variables: { address },
+        }),
+      });
+
+      let nftCount = 0;
+      if (nftResponse.ok) {
+        const nftData = await nftResponse.json();
+        nftCount = nftData?.data?.current_token_ownerships_v2?.length || 0;
+      }
+
+      setJourneyData({
+        address,
+        totalTransactions,
+        firstTransactionDate,
+        nftCount,
+      });
+
+      toast({
+        title: "Success!",
+        description: "Journey card generated successfully",
+      });
+    } catch (error) {
+      console.error("Error fetching Aptos data:", error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch data. Please check the address and try again.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      loadStats();
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-background py-8 px-4">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8">
+      <div className="w-full max-w-2xl space-y-8">
         {/* Header */}
-        <div className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <img src={aptosLogo} alt="Aptos Logo" className="w-10 h-10" />
-            <h1 className="text-4xl font-bold text-white">
-              Tracktos
+        <div className="text-center space-y-4 animate-in fade-in-50 slide-in-from-top-4 duration-700">
+          <div className="flex items-center justify-center gap-2">
+            <Sparkles className="w-8 h-8 text-primary animate-pulse" />
+            <h1 className="text-5xl font-bold bg-gradient-to-r from-primary via-secondary to-primary bg-clip-text text-transparent">
+              Aptos Journey Card
             </h1>
-            <Sparkles className="w-6 h-6 text-primary" />
           </div>
-          <p className="text-muted-foreground">Explore your Aptos Journey through wallet analytics and insights</p>
+          <p className="text-muted-foreground text-lg">Discover your on-chain story with a beautiful adventure card</p>
         </div>
 
-        {/* Control Panel */}
-        <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl shadow-xl p-6 space-y-4">
-          <div className="flex gap-2">
-            <Button
-              onClick={() => setNetwork("mainnet")}
-              variant={network === "mainnet" ? "default" : "outline"}
-              className="font-medium"
-            >
-              Mainnet
-            </Button>
-            <Button
-              onClick={() => setNetwork("testnet")}
-              variant={network === "testnet" ? "default" : "outline"}
-              className="font-medium"
-            >
-              Testnet
-            </Button>
-          </div>
-          
+        {/* Input Section */}
+        <div className="space-y-4 animate-in fade-in-50 slide-in-from-bottom-4 duration-700 delay-150">
           <div className="flex flex-col sm:flex-row gap-3">
             <Input
               type="text"
+              placeholder="Enter Aptos wallet address (0x...)"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Enter Aptos wallet address (0x...)"
-              className="flex-1"
+              className="flex-1 h-12 bg-input/50 backdrop-blur-sm border-border focus:border-primary transition-all duration-300"
               disabled={loading}
             />
             <Button
-              onClick={loadStats}
-              disabled={loading || !address.trim()}
-              className="sm:w-auto gap-2"
+              onClick={fetchAptosData}
+              disabled={loading}
+              className="h-12 px-8 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-glow hover:shadow-glow-lg transition-all duration-300"
             >
               {loading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                   Loading...
                 </>
               ) : (
-                "Analyze Wallet"
+                "Generate Card"
               )}
             </Button>
           </div>
-
-          {error && (
-            <div className="bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 rounded-lg">
-              {error}
-            </div>
-          )}
+          <p className="text-xs text-muted-foreground text-center">
+            Paste any Aptos mainnet address to see their journey
+          </p>
         </div>
 
-        {/* Dashboard Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="space-y-6">
-            <AccountCard 
-              data={data?.account || null} 
-              loading={loading}
-              transactionCount={data?.totalTransactionCount || 0}
-              nftCount={data?.totalNftCount || 0}
-              tokenCount={data?.tokens?.length || 0}
-            />
-            <TokensCard tokens={data?.tokens || null} loading={loading} />
+        {/* Journey Card Display */}
+        {journeyData && (
+          <div className="pt-4">
+            <JourneyCard {...journeyData} />
           </div>
-          
-          <div className="space-y-6">
-            <ActivityCard activity={data?.activity || null} loading={loading} />
-          </div>
-        </div>
-
-        {/* Full Width NFT Section */}
-        <NFTsCard nfts={data?.nfts || null} loading={loading} />
+        )}
       </div>
     </div>
   );
-}
+};
+
+export default Index;
