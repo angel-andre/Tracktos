@@ -47,14 +47,21 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        chart: {
+          "1": "hsl(var(--chart-1))",
+          "2": "hsl(var(--chart-2))",
+          "3": "hsl(var(--chart-3))",
+          "4": "hsl(var(--chart-4))",
+          "5": "hsl(var(--chart-5))",
+        },
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'glow-primary': 'radial-gradient(circle at center, hsl(117 79% 90% / 0.4), transparent)',
+        'glow-primary': 'radial-gradient(circle at center, hsl(var(--primary) / 0.4), transparent)',
       },
       boxShadow: {
-        'glow': '0 0 40px hsl(117 79% 90% / 0.5)',
-        'glow-lg': '0 0 60px hsl(117 79% 90% / 0.6), 0 0 100px hsl(72 8% 12% / 0.15)',
+        'glow': '0 0 40px hsl(var(--primary) / 0.5)',
+        'glow-lg': '0 0 60px hsl(var(--primary) / 0.6), 0 0 100px hsl(var(--background) / 0.15)',
       },
       borderRadius: {
         lg: "var(--radius)",
