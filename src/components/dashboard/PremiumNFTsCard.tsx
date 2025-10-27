@@ -44,6 +44,8 @@ const buildImageCandidates = (u: string): string[] => {
       `https://nftstorage.link/ipfs/${ipfsPath}`,
       `https://dweb.link/ipfs/${ipfsPath}`,
       `https://gateway.pinata.cloud/ipfs/${ipfsPath}`,
+      `https://ipfs.cf-ipfs.com/ipfs/${ipfsPath}`,
+      `https://gw3.io/ipfs/${ipfsPath}`,
     ];
     gateways.forEach(pushUnique);
   }
@@ -55,6 +57,7 @@ const buildImageCandidates = (u: string): string[] => {
       [
         `https://arweave.net/${path}`,
         `https://ar-io.net/${path}`,
+        `https://gateway.irys.xyz/${path}`,
       ].forEach(pushUnique);
     }
   } catch {}
@@ -65,10 +68,12 @@ const buildImageCandidates = (u: string): string[] => {
 const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; className?: string }) => {
   const [i, setI] = React.useState(0);
   const [loaded, setLoaded] = React.useState(false);
+  const [failed, setFailed] = React.useState(false);
   const src = srcs[i];
 
   React.useEffect(() => {
     setLoaded(false);
+    setFailed(false);
     let cancelled = false;
     const timer = setTimeout(() => {
       if (!loaded && !cancelled) {
@@ -81,8 +86,19 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
     };
   }, [src, srcs.length, loaded]);
 
-  const onError = () => setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
+  const onError = () => {
+    setI((prev) => {
+      const next = prev + 1;
+      if (next < srcs.length) return next;
+      setFailed(true);
+      return prev;
+    });
+  };
   const onLoad = () => setLoaded(true);
+
+  if (failed || !src) {
+    return <ImageIcon className="w-12 h-12 text-muted-foreground" />;
+  }
 
   return (
     <img

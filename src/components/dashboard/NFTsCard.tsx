@@ -6,6 +6,7 @@ interface NFT {
   name: string;
   collection: string;
   image: string;
+  price?: string;
 }
 
 interface NFTsCardProps {
@@ -67,10 +68,12 @@ const buildImageCandidates = (u: string): string[] => {
 const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; className?: string }) => {
   const [i, setI] = React.useState(0);
   const [loaded, setLoaded] = React.useState(false);
+  const [failed, setFailed] = React.useState(false);
   const src = srcs[i];
 
   React.useEffect(() => {
     setLoaded(false);
+    setFailed(false);
     let cancelled = false;
     const timer = setTimeout(() => {
       if (!loaded && !cancelled) {
@@ -83,8 +86,19 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
     };
   }, [src, srcs.length, loaded]);
 
-  const onError = () => setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
+  const onError = () => {
+    setI((prev) => {
+      const next = prev + 1;
+      if (next < srcs.length) return next;
+      setFailed(true);
+      return prev;
+    });
+  };
   const onLoad = () => setLoaded(true);
+
+  if (failed || !src) {
+    return <ImageIcon className="w-8 h-8 text-muted-foreground" />;
+  }
 
   return (
     <img
@@ -137,6 +151,9 @@ export function NFTsCard({ nfts, loading }: NFTsCardProps) {
                 </div>
                 <p className="text-xs font-semibold text-foreground truncate">{nft.name}</p>
                 <p className="text-xs text-muted-foreground truncate">{nft.collection}</p>
+                {nft.price && (
+                  <p className="text-xs text-primary font-semibold mt-1">{nft.price} APT</p>
+                )}
               </div>
             ))}
           </div>
