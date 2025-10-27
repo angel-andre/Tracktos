@@ -256,68 +256,70 @@ serve(async (req) => {
     );
 
     // Build net flows per day per token (true historical balances)
-    // 1) Fetch on-chain activities within range using fungible_asset_activities only (covers APT and other tokens)
-    const activitiesQuery = `
-      query Activities($address: String!, $start: timestamptz, $end: timestamptz, $assetTypes: [String!]) {
-        fungible_asset_activities(
-          where: { owner_address: { _eq: $address }, transaction_timestamp: { _gte: $start, _lte: $end }, asset_type: { _in: $assetTypes } }
-          order_by: { transaction_timestamp: asc }
-          limit: 10000
-        ) {
-          transaction_timestamp
-          amount
-          asset_type
-        }
-      }
-    `;
-
-    // Build asset type list for tracked tokens (APT + stables + any priced tokens from balances)
-    const trackedAssetTypes = Array.from(new Set(rawTokenBalances.map((t) => t.assetType)));
-
-    const startIso = new Date(startDate).toISOString();
-    const endIso = new Date(now).toISOString();
-
-    console.log('Fetching activities for range', startIso, '->', endIso, 'assets:', trackedAssetTypes.length);
-    const activitiesResp = await fetch(graphqlUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: activitiesQuery,
-        variables: { address, start: startIso, end: endIso, assetTypes: trackedAssetTypes }
-      })
-    });
-
-    if (!activitiesResp.ok) {
-      console.log('Activities fetch failed:', activitiesResp.status);
-    }
-
-    const activitiesData = activitiesResp.ok ? await activitiesResp.json() : { data: { coin_activities: [], fungible_asset_activities: [] } };
-
-    // 2) Aggregate flows per date and token id
+    const USE_FLOWS = false; // Temporary safe mode: disable flows while we verify signs and schema
     const flowsByDateById = new Map<string, Map<string, number>>();
-    const addFlow = (dateStr: string, id: string, delta: number) => {
-      let m = flowsByDateById.get(dateStr);
-      if (!m) { m = new Map(); flowsByDateById.set(dateStr, m); }
-      m.set(id, (m.get(id) || 0) + delta);
-    };
-
-    // APT flows are included via fungible_asset_activities (asset_type = 0x1::aptos_coin::AptosCoin)
-
-    // Other tokens via fungible_asset_activities (amount may be signed)
-    const idByAssetType = new Map<string, string>();
-    for (const t of rawTokenBalances) { idByAssetType.set(t.assetType, t.coinGeckoId); }
-    const faActs: Array<{ transaction_timestamp: string; amount: string; asset_type: string }> = activitiesData.data?.fungible_asset_activities || [];
-    for (const a of faActs) {
-      const dateStr = (a.transaction_timestamp || '').split('T')[0];
-      const assetType = String(a.asset_type || '');
-      const id = idByAssetType.get(assetType);
-      if (!id) continue;
-      const decimals = decimalsByAsset.get(assetType) ?? 8;
-      const amtStr = String(a.amount ?? '0').trim();
-      const isNeg = amtStr.startsWith('-');
-      const rawAbs = isNeg ? amtStr.slice(1) : amtStr;
-      const units = Number(formatUnits(rawAbs, decimals));
-      addFlow(dateStr, id, (isNeg ? -1 : 1) * units);
+    
+    if (USE_FLOWS) {
+      // 1) Fetch on-chain activities within range using fungible_asset_activities only (covers APT and other tokens)
+      const activitiesQuery = `
+        query Activities($address: String!, $start: timestamptz, $end: timestamptz, $assetTypes: [String!]) {
+          fungible_asset_activities(
+            where: { owner_address: { _eq: $address }, transaction_timestamp: { _gte: $start, _lte: $end }, asset_type: { _in: $assetTypes } }
+            order_by: { transaction_timestamp: asc }
+            limit: 10000
+          ) {
+            transaction_timestamp
+            amount
+            asset_type
+          }
+        }
+      `;
+      
+      // Build asset type list for tracked tokens (APT + stables + any priced tokens from balances)
+      const trackedAssetTypes = Array.from(new Set(rawTokenBalances.map((t) => t.assetType)));
+      
+      const startIso = new Date(startDate).toISOString();
+      const endIso = new Date(now).toISOString();
+      
+      console.log('Fetching activities for range', startIso, '->', endIso, 'assets:', trackedAssetTypes.length);
+      const activitiesResp = await fetch(graphqlUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: activitiesQuery,
+          variables: { address, start: startIso, end: endIso, assetTypes: trackedAssetTypes }
+        })
+      });
+      
+      if (!activitiesResp.ok) {
+        console.log('Activities fetch failed:', activitiesResp.status);
+      }
+      
+      const activitiesData = activitiesResp.ok ? await activitiesResp.json() : { data: { coin_activities: [], fungible_asset_activities: [] } };
+      
+      // 2) Aggregate flows per date and token id
+      const addFlow = (dateStr: string, id: string, delta: number) => {
+        let m = flowsByDateById.get(dateStr);
+        if (!m) { m = new Map(); flowsByDateById.set(dateStr, m); }
+        m.set(id, (m.get(id) || 0) + delta);
+      };
+      
+      // Other tokens via fungible_asset_activities (amount may be signed)
+      const idByAssetType = new Map<string, string>();
+      for (const t of rawTokenBalances) { idByAssetType.set(t.assetType, t.coinGeckoId); }
+      const faActs: Array<{ transaction_timestamp: string; amount: string; asset_type: string }> = activitiesData.data?.fungible_asset_activities || [];
+      for (const a of faActs) {
+        const dateStr = (a.transaction_timestamp || '').split('T')[0];
+        const assetType = String(a.asset_type || '');
+        const id = idByAssetType.get(assetType);
+        if (!id) continue;
+        const decimals = decimalsByAsset.get(assetType) ?? 8;
+        const amtStr = String(a.amount ?? '0').trim();
+        const isNeg = amtStr.startsWith('-');
+        const rawAbs = isNeg ? amtStr.slice(1) : amtStr;
+        const units = Number(formatUnits(rawAbs, decimals));
+        addFlow(dateStr, id, (isNeg ? -1 : 1) * units);
+      }
     }
 
     // 3) Compute end-of-day balances per date using current balances and suffix sums of flows
