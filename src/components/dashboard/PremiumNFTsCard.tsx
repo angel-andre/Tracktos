@@ -164,7 +164,7 @@ export function PremiumNFTsCard({ nfts, loading }: PremiumNFTsCardProps) {
                   <p className="text-sm font-bold text-foreground truncate">{nft.name}</p>
                   <p className="text-xs text-muted-foreground truncate">{nft.collection}</p>
                   {nft.price && (
-                    <p className="text-xs text-primary font-semibold mt-1">{nft.price} APT</p>
+                    <p className="text-xs text-primary font-semibold mt-1">{nft.price}</p>
                   )}
                 </div>
               </div>

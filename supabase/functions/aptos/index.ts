@@ -509,29 +509,49 @@ serve(async (req) => {
           const toks = joinData.data?.token_activities_v2 || [];
           const faas = joinData.data?.fungible_asset_activities || [];
 
-          // Build map of largest APT withdraw per version (exclude non-APT assets)
-          const withdrawByVersion = new Map<number, string>();
+          // Build map of largest withdraw per version for any asset, preferring APT
+          const withdrawByVersion = new Map<number, { amt: string; asset: string }>();
+          const isApt = (asset: string) => asset.includes('0x1::aptos_coin::AptosCoin');
           for (const fa of faas) {
             const v = Number(fa.transaction_version ?? -1);
             const amt = String(fa.amount ?? '0').replace(/\D/g, '') || '0';
             const asset = String(fa.asset_type || '');
-            // Only consider APT movements and prefer the largest per version
-            if (asset.includes('0x1::aptos_coin::AptosCoin')) {
-              const prev = withdrawByVersion.get(v) || '0';
-              if (BigInt(amt) > BigInt(prev)) withdrawByVersion.set(v, amt);
+            const prev = withdrawByVersion.get(v);
+            if (!prev) {
+              withdrawByVersion.set(v, { amt, asset });
+            } else {
+              // Prefer APT over non-APT; if same type, keep larger amount
+              if (isApt(asset) && !isApt(prev.asset)) {
+                withdrawByVersion.set(v, { amt, asset });
+              } else if ((isApt(asset) === isApt(prev.asset)) && BigInt(amt) > BigInt(prev.amt)) {
+                withdrawByVersion.set(v, { amt, asset });
+              }
             }
           }
 
           let joined = 0;
           for (const ta of toks) {
             const v = Number(ta.transaction_version ?? -1);
-            const amt = withdrawByVersion.get(v) || '0';
-            if (amt !== '0') {
-              const priceApt = formatUnits(amt, 8);
+            const rec = withdrawByVersion.get(v);
+            if (rec && rec.amt !== '0') {
+              const asset = rec.asset;
+              const lower = asset.toLowerCase();
+              let symbol = 'APT';
+              let decimals = 8;
+              if (!isApt(asset)) {
+                if (lower.includes('usdc')) { symbol = 'USDC'; decimals = 6; }
+                else if (lower.includes('usdt')) { symbol = 'USDT'; decimals = 6; }
+                else {
+                  const parts = asset.split('::');
+                  symbol = parts[parts.length - 1] || symbol;
+                  decimals = 8;
+                }
+              }
+              const priceStr = `${formatUnits(rec.amt, decimals)} ${symbol}`;
               const tokenId = String(ta.token_data_id || '').toLowerCase();
               if (tokenId) {
                 if (!nftPriceMap.has(tokenId)) {
-                  nftPriceMap.set(tokenId, { price: priceApt, hash: String(v) });
+                  nftPriceMap.set(tokenId, { price: priceStr, hash: String(v) });
                   joined++;
                 }
               }
