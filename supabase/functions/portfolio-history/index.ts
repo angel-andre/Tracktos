@@ -38,21 +38,16 @@ serve(async (req) => {
 
     console.log(`Fetching portfolio history for ${address} with timeframe ${timeframe}`);
 
-    // Calculate time range - ensure we're using past dates only
+    // Calculate time range - use current date/time and clamp to past dates only
     const now = new Date();
-    // Set to yesterday to ensure we have historical data
-    now.setDate(now.getDate() - 1);
     now.setHours(0, 0, 0, 0);
     
     const days = timeframe === '7D' ? 7 : timeframe === '30D' ? 30 : 90;
     const startDate = new Date(now);
     startDate.setDate(startDate.getDate() - days);
     
-    // Reduce data points to avoid timeout (1 point every 3 days for 30D/90D)
-    const dataPoints = timeframe === '7D' ? 7 : timeframe === '30D' ? 10 : 15;
-    const interval = (now.getTime() - startDate.getTime()) / dataPoints;
-
-    console.log(`Generating ${dataPoints} data points over ${days} days`);
+    // We'll compute one point per day
+    console.log(`Generating ${days} data points over ${days} days`);
 
     // Step 1: Fetch current token holdings from Aptos Fullnode API
     const graphqlUrl = 'https://api.mainnet.aptoslabs.com/v1/graphql';
