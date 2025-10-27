@@ -184,8 +184,23 @@ serve(async (req) => {
         'SOL': 'solana',
         'GUI': 'gui-inu',
         'CAKE': 'pancakeswap-token',
-        'WBTC': 'wrapped-bitcoin'
+        'WBTC': 'wrapped-bitcoin',
+        'CELL': 'cellena-finance',
+        'WAR': 'war-coin',
+        'STKAPT': 'staked-aptos',
+        'ZUSDC': 'usd-coin'
       };
+
+      // Also create extended token symbol mapping for price lookups
+      const symbolAliases = new Map<string, string>([
+        ['ZUSDC', 'USDC'],
+        ['ZOUSDC', 'USDC'],
+        ['ZUSDT', 'USDT'],
+        ['LAPTOS', 'APT'],
+        ['STAPT', 'APT'],
+        ['STKAPT', 'APT'],
+        ['ZAPT', 'APT']
+      ]);
 
       // Try CoinGecko first for known tokens
       try {
@@ -980,45 +995,51 @@ serve(async (req) => {
             if (!toToken && args[1]) toToken = toSymbol(args[1]);
           }
           
-          // Calculate volume in USD (try both tokens)
+          // Enhanced volume calculation with symbol aliases
           let volumeUsd = 0;
           if (fromToken && fromAmount) {
-            const price = priceMap.get(fromToken.toUpperCase()) || 0;
-            const amount = Number(formatUnits(fromAmount, 8));
+            let lookupSymbol = fromToken.toUpperCase();
+            if (symbolAliases.has(lookupSymbol)) {
+              lookupSymbol = symbolAliases.get(lookupSymbol)!;
+            }
+            const price = priceMap.get(lookupSymbol) || 0;
+            const decimals = getDecimals(fromToken);
+            const amount = Number(formatUnits(fromAmount, decimals));
             volumeUsd = amount * price;
           }
           if (volumeUsd === 0 && toToken && toAmount) {
-            const price = priceMap.get(toToken.toUpperCase()) || 0;
-            const amount = Number(formatUnits(toAmount, 8));
+            let lookupSymbol = toToken.toUpperCase();
+            if (symbolAliases.has(lookupSymbol)) {
+              lookupSymbol = symbolAliases.get(lookupSymbol)!;
+            }
+            const price = priceMap.get(lookupSymbol) || 0;
+            const decimals = getDecimals(toToken);
+            const amount = Number(formatUnits(toAmount, decimals));
             volumeUsd = amount * price;
           }
           
-          // Record swap even if volumeUsd is 0 (we still want to see the activity)
+          // Record swap if we have tokens (even if volumeUsd is 0)
           if (fromToken && toToken && fromToken !== toToken) {
             swapHistory.push({
               timestamp: iso,
               protocol: contractName,
               fromToken,
               toToken,
-              fromAmount: formatUnits(fromAmount, 8),
-              toAmount: formatUnits(toAmount, 8),
+              fromAmount: formatUnits(fromAmount, getDecimals(fromToken)),
+              toAmount: formatUnits(toAmount, getDecimals(toToken)),
               volumeUsd
             });
-            
-            // Update protocol volume
-            const key = `${contractName}::${contractType}`;
-            const prevVolume = protocolVolumes.get(key) || { protocol: contractName, type: contractType, volumeUsd: 0, txCount: 0 };
-            protocolVolumes.set(key, {
-              ...prevVolume,
-              volumeUsd: prevVolume.volumeUsd + volumeUsd,
-              txCount: prevVolume.txCount + 1
-            });
-          } else {
-            // Couldn't resolve tokens, still count a swap interaction for protocol usage stats
-            const key = `${contractName}::${contractType}`;
-            const prev = protocolVolumes.get(key) || { protocol: contractName, type: contractType, volumeUsd: 0, txCount: 0 };
-            protocolVolumes.set(key, { ...prev, txCount: prev.txCount + 1 });
+            capturedSwap = true;
           }
+          
+          // Always count protocol interaction
+          const key = `${contractName}::${contractType}`;
+          const prevVolume = protocolVolumes.get(key) || { protocol: contractName, type: contractType, volumeUsd: 0, txCount: 0 };
+          protocolVolumes.set(key, {
+            ...prevVolume,
+            volumeUsd: prevVolume.volumeUsd + volumeUsd,
+            txCount: prevVolume.txCount + 1
+          });
         }
         
         // Track staking/unstaking activities
