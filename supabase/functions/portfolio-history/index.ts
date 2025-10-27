@@ -190,9 +190,49 @@ serve(async (req) => {
     for (const t of aggregated.values()) {
       assetTypeById.set(t.coinGeckoId, t.assetType);
     }
+// Include staked APT in APT balance (liquid + staked)
+let stakedAptUnits = 0;
+try {
+  const stakingQuery = `
+    query Stake($address: String!) {
+      delegated_staking_activities(
+        where: {delegator_address: {_eq: $address}}
+        order_by: {transaction_version: desc}
+        limit: 1
+      ) {
+        amount
+      }
+    }
+  `;
+  const stakingResp = await fetch(graphqlUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: stakingQuery, variables: { address } })
+  });
+  if (stakingResp.ok) {
+    const stakingData = await stakingResp.json();
+    const amt = stakingData?.data?.delegated_staking_activities?.[0]?.amount;
+    if (amt) {
+      stakedAptUnits = formatUnits(amt, 8);
+      console.log('✓ Detected staked APT units:', stakedAptUnits);
+    }
+  } else {
+    console.log('Staking query failed:', stakingResp.status);
+  }
+} catch (e) {
+  console.log('Staking query error:', e);
+}
 
-    console.log(`Selected ${uniqueTokenBalances.length} tokens:`, uniqueTokenBalances.map(t => `${t.symbol}(${t.balance.toFixed(4)})`));
+if (stakedAptUnits > 0) {
+  const aptIdx = uniqueTokenBalances.findIndex(t => t.coinGeckoId === 'aptos');
+  if (aptIdx >= 0) {
+    uniqueTokenBalances[aptIdx].balance += stakedAptUnits;
+  } else {
+    uniqueTokenBalances.push({ symbol: 'APT', balance: stakedAptUnits, coinGeckoId: 'aptos' });
+  }
+}
 
+console.log(`Selected ${uniqueTokenBalances.length} tokens:`, uniqueTokenBalances.map(t => `${t.symbol}(${t.balance.toFixed(4)})`));
     if (uniqueTokenBalances.length === 0) {
       // Return empty array if no tokens
       return new Response(
@@ -337,7 +377,7 @@ serve(async (req) => {
     }
 
     // Build net flows per day per token (true historical balances)
-    const USE_FLOWS = true; // Enable flows to track transaction activity (deposits/withdrawals)
+    const USE_FLOWS = false; // Disable flows to avoid counting staking as outflows; price current balances over time
     const flowsByDateById = new Map<string, Map<string, number>>();
     
     if (USE_FLOWS) {
@@ -415,29 +455,11 @@ serve(async (req) => {
     }
 
     const startBalanceById = new Map<string, number>();
-    // Select tokens to match Token Holdings logic: APT + top 10 by current USD value
+    // Track ALL tokens we could price to match Tokens section totals (APT + all Aptos tokens)
     const allIds = new Set<string>([...priceLookup.keys()]);
     for (const t of uniqueTokenBalances) allIds.add(t.coinGeckoId);
 
-    const lastDate = dateList[dateList.length - 1];
-    const entries: Array<{ id: string; usd: number }> = [];
-    for (const id of allIds) {
-      const bal = currentById.get(id) || 0;
-      if (!bal) continue;
-      const prices = priceLookup.get(id) || {};
-      const p = (typeof prices[lastDate] === 'number' ? prices[lastDate] : (baseNowPrices.get(id) || 0));
-      const usd = bal * (p || 0);
-      entries.push({ id, usd });
-    }
-
-    const nonApt = entries.filter(e => e.id !== 'aptos');
-    nonApt.sort((a, b) => b.usd - a.usd);
-    const top10 = nonApt.slice(0, 10).map(e => e.id);
-
-    const trackedIds = new Set<string>(top10);
-    // Always include APT
-    trackedIds.add('aptos');
-
+    const trackedIds = new Set<string>(Array.from(allIds));
     for (const id of trackedIds) {
       const curr = currentById.get(id) || 0;
       const totalFlow = totalFlowById.get(id) || 0;
