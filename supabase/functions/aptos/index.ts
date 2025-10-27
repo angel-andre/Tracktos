@@ -675,66 +675,88 @@ serve(async (req) => {
     let activeDays = 0;
     let totalGasSpent = '0';
     
-    // Fetch recent transactions for analytics by walking backwards until covering at least the last 120 days
-    console.log('Fetching recent transactions for analytics (backward by date window)...');
+    // Fetch ALL transactions for gas calculation (parallel, large batches)
+    console.log(`Fetching ALL ${totalTransactionCount} transactions for gas and analytics...`);
     const gasCalcBatchSize = 500;
+    const gasCalcBatches = Math.ceil(totalTransactionCount / gasCalcBatchSize);
+    
+    console.log(`Will fetch ${gasCalcBatches} batches of ${gasCalcBatchSize} transactions each`);
+    
+    // Fetch in smaller parallel chunks to avoid overwhelming the API
     let allTransactions: any[] = [];
     const parallelChunkSize = 5;
-
-    // Define UTC "today" and minimum date window to cover
-    const todayUtc = new Date();
-    const minDaysWindow = 120; // ensure > 90 (heatmap) and > 30 (gas chart)
-    const endUtc = new Date(Date.UTC(
-      todayUtc.getUTCFullYear(),
-      todayUtc.getUTCMonth(),
-      todayUtc.getUTCDate()
-    ));
-    const minDateUtc = new Date(endUtc);
-    minDateUtc.setUTCDate(endUtc.getUTCDate() - minDaysWindow);
-
-    // Start from the latest sequence number and move backwards in parallel chunks
-    let startSeq = Math.max(0, totalTransactionCount - gasCalcBatchSize);
-    let safetyTxLimit = 20000; // hard cap to avoid excessive fetching
-
-    while (startSeq >= 0 && safetyTxLimit > 0) {
-      const chunkPromises: Promise<any[]>[] = [];
-      for (let i = 0; i < parallelChunkSize; i++) {
-        const s = startSeq - i * gasCalcBatchSize;
-        if (s < 0) continue;
-        const txUrl = `${fullnodeBase}/accounts/${address}/transactions?start=${s}&limit=${gasCalcBatchSize}`;
+    
+    // To ensure we get recent transactions for analytics, fetch from both ends
+    // First: fetch recent transactions (from the end)
+    const recentBatchCount = Math.min(10, gasCalcBatches); // Last 5000 txs
+    const recentStartBatch = Math.max(0, gasCalcBatches - recentBatchCount);
+    
+    console.log(`Fetching recent transactions from batch ${recentStartBatch} to ${gasCalcBatches}...`);
+    for (let chunkStart = recentStartBatch; chunkStart < gasCalcBatches; chunkStart += parallelChunkSize) {
+      const chunkEnd = Math.min(chunkStart + parallelChunkSize, gasCalcBatches);
+      const chunkPromises = [];
+      
+      for (let i = chunkStart; i < chunkEnd; i++) {
+        const offset = i * gasCalcBatchSize;
+        const txUrl = `${fullnodeBase}/accounts/${address}/transactions?start=${offset}&limit=${gasCalcBatchSize}`;
         chunkPromises.push(
           fetch(txUrl, { headers: { 'Accept': 'application/json' } })
-            .then(r => (r.ok ? r.json() : []))
-            .catch(() => [])
+            .then(r => {
+              if (!r.ok) {
+                console.log(`Recent batch ${i} failed with status ${r.status}`);
+                return [];
+              }
+              return r.json();
+            })
+            .catch(err => {
+              console.log(`Recent batch ${i} error:`, err.message);
+              return [];
+            })
         );
       }
-
+      
       const chunkResults = await Promise.all(chunkPromises);
       const chunkTransactions = chunkResults.flat().filter(tx => tx && typeof tx === 'object');
       allTransactions.push(...chunkTransactions);
-      safetyTxLimit -= chunkTransactions.length;
-
-      // Find earliest tx date in this chunk (UTC)
-      let earliestChunkIso = '';
-      for (const tx of chunkTransactions) {
-        const iso = toISOFromTx(tx);
-        if (!earliestChunkIso || iso < earliestChunkIso) earliestChunkIso = iso;
-      }
-      console.log(`Fetched backward from start=${startSeq}: ${chunkTransactions.length} txs. Earliest in chunk: ${earliestChunkIso}`);
-
-      // Move the window backward
-      startSeq -= parallelChunkSize * gasCalcBatchSize;
-
-      // Stop if we've reached before the min date window or no data returned
-      if (chunkTransactions.length === 0) break;
-      if (earliestChunkIso) {
-        const [y, m, d] = earliestChunkIso.split('T')[0].split('-').map(n => parseInt(n, 10));
-        const earliestDateUtc = new Date(Date.UTC(y, (m || 1) - 1, d || 1));
-        if (earliestDateUtc <= minDateUtc) break;
+      
+      console.log(`Fetched recent chunk ${chunkStart}-${chunkEnd}: ${chunkTransactions.length} transactions`);
+    }
+    
+    // Then: fetch older transactions (from the beginning) if we haven't covered them
+    if (recentStartBatch > 0) {
+      console.log(`Fetching older transactions from batch 0 to ${recentStartBatch}...`);
+      for (let chunkStart = 0; chunkStart < recentStartBatch; chunkStart += parallelChunkSize) {
+        const chunkEnd = Math.min(chunkStart + parallelChunkSize, recentStartBatch);
+        const chunkPromises = [];
+        
+        for (let i = chunkStart; i < chunkEnd; i++) {
+          const offset = i * gasCalcBatchSize;
+          const txUrl = `${fullnodeBase}/accounts/${address}/transactions?start=${offset}&limit=${gasCalcBatchSize}`;
+          chunkPromises.push(
+            fetch(txUrl, { headers: { 'Accept': 'application/json' } })
+              .then(r => {
+                if (!r.ok) {
+                  console.log(`Old batch ${i} failed with status ${r.status}`);
+                  return [];
+                }
+                return r.json();
+              })
+              .catch(err => {
+                console.log(`Old batch ${i} error:`, err.message);
+                return [];
+              })
+          );
+        }
+        
+        const chunkResults = await Promise.all(chunkPromises);
+        const chunkTransactions = chunkResults.flat().filter(tx => tx && typeof tx === 'object');
+        allTransactions.push(...chunkTransactions);
+        
+        console.log(`Fetched old chunk ${chunkStart}-${chunkEnd}: ${chunkTransactions.length} transactions`);
       }
     }
-
-    console.log(`✓ Fetched ${allTransactions.length} recent transactions for analytics`);
+    
+    console.log(`✓ Fetched ${allTransactions.length} total transactions (${totalTransactionCount} in account)`);
     
     // Calculate total gas spent from ALL transactions (dedup + user txs only)
     const parseBig = (v: any): bigint => {
@@ -856,15 +878,10 @@ serve(async (req) => {
       typeCounts.set(txType, (typeCounts.get(txType) || 0) + 1);
     }
     
-    // Format heatmap data (fill last 90 days up to today in UTC)
-    const activityHeatmap: { date: string; count: number }[] = [];
-    const endUtcSeries = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), todayUtc.getUTCDate()));
-    for (let i = 89; i >= 0; i--) {
-      const d = new Date(endUtcSeries);
-      d.setUTCDate(endUtcSeries.getUTCDate() - i);
-      const key = d.toISOString().split('T')[0];
-      activityHeatmap.push({ date: key, count: dailyCounts.get(key) || 0 });
-    }
+    // Format heatmap data
+    const activityHeatmap = Array.from(dailyCounts.entries())
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
     
     // Format type breakdown with percentages
     const totalTyped = Array.from(typeCounts.values()).reduce((sum, c) => sum + c, 0);
@@ -876,15 +893,10 @@ serve(async (req) => {
       }))
       .sort((a, b) => b.count - a.count);
     
-    // Format gas over time (fill last 120 days up to today in UTC)
-    const gasOverTime: { date: string; gas: string }[] = [];
-    for (let i = 119; i >= 0; i--) {
-      const d = new Date(endUtcSeries);
-      d.setUTCDate(endUtcSeries.getUTCDate() - i);
-      const key = d.toISOString().split('T')[0];
-      const gas = dailyGas.get(key) || 0n;
-      gasOverTime.push({ date: key, gas: formatUnits(String(gas), 8) });
-    }
+    // Format gas over time
+    const gasOverTime = Array.from(dailyGas.entries())
+      .map(([date, gas]) => ({ date, gas: formatUnits(String(gas), 8) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
     
     // Format top contracts
     const topContracts = Array.from(contractCounts.entries())
