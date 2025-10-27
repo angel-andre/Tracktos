@@ -154,8 +154,10 @@ serve(async (req) => {
       const assetType = item.asset_type as string;
       if (balance <= 0) continue;
 
-      // Start with APT and stablecoins
-      let cgId: string | null = getCoinGeckoIdIfApt(symbol, assetType) || (isStableUsd(symbol) ? 'STABLE_USD' : null);
+      // Start with APT and stablecoins mapped to real CoinGecko IDs
+      let cgId: string | null =
+        getCoinGeckoIdIfApt(symbol, assetType) ||
+        (symbol === 'USDC' ? 'usd-coin' : symbol === 'USDT' ? 'tether' : null);
 
       // If not APT/stable, try to map by Aptos contract address via CoinGecko platforms
       if (!cgId) {
@@ -169,17 +171,13 @@ serve(async (req) => {
     }
 
     // Deduplicate by pricing source:
-    // - For STABLE_USD, SUM balances across USDC/USDT
-    // - For other assets (e.g., APT), keep the LARGEST balance to avoid double-counting wrappers
+    // - Keep the LARGEST balance per CoinGecko id to avoid double-counting wrappers
     const aggregated = new Map<string, { symbol: string; balance: number; assetType: string; coinGeckoId: string }>();
     const assetTypeById = new Map<string, string>();
     for (const t of rawTokenBalances) {
       const existing = aggregated.get(t.coinGeckoId);
       if (!existing) {
         aggregated.set(t.coinGeckoId, { ...t });
-      } else if (t.coinGeckoId === 'STABLE_USD') {
-        existing.balance += t.balance;
-        aggregated.set(t.coinGeckoId, existing);
       } else if (t.balance > existing.balance) {
         aggregated.set(t.coinGeckoId, { ...t });
       }
@@ -221,12 +219,6 @@ serve(async (req) => {
     const priceMaps = await Promise.all(
       uniqueTokenBalances.map(async (token) => {
         try {
-          if (token.coinGeckoId === 'STABLE_USD') {
-            const map: Record<string, number> = {};
-            for (const ds of dateList) map[ds] = 1; // $1 peg for stables
-            return { id: token.coinGeckoId, prices: map };
-          }
-
           const url = `https://api.coingecko.com/api/v3/coins/${token.coinGeckoId}/market_chart?vs_currency=usd&days=${days + 1}&interval=daily`;
           const resp = await fetch(url);
           if (!resp.ok) {
@@ -256,7 +248,8 @@ serve(async (req) => {
 
     // Build base fallback prices for tokens lacking historical series
     const baseNowPrices = new Map<string, number>();
-    baseNowPrices.set('STABLE_USD', 1);
+    baseNowPrices.set('usd-coin', 1);
+    baseNowPrices.set('tether', 1);
 
     // Map token id -> symbol for DexScreener queries
     const symbolById = new Map<string, string>();
@@ -267,7 +260,7 @@ serve(async (req) => {
     // Determine which ids have no historical price data
     const idsNeedingBase = Array.from(priceLookup.keys()).filter((id) => {
       const m = priceLookup.get(id) || {};
-      return Object.keys(m).length === 0 && id !== 'STABLE_USD';
+      return Object.keys(m).length === 0;
     });
 
     if (idsNeedingBase.length > 0) {
@@ -382,8 +375,28 @@ serve(async (req) => {
     }
 
     const startBalanceById = new Map<string, number>();
-    const trackedIds = new Set<string>([...priceLookup.keys()]);
-    for (const t of uniqueTokenBalances) trackedIds.add(t.coinGeckoId);
+    // Select tokens to match Token Holdings logic: APT + top 10 by current USD value
+    const allIds = new Set<string>([...priceLookup.keys()]);
+    for (const t of uniqueTokenBalances) allIds.add(t.coinGeckoId);
+
+    const lastDate = dateList[dateList.length - 1];
+    const entries: Array<{ id: string; usd: number }> = [];
+    for (const id of allIds) {
+      const bal = currentById.get(id) || 0;
+      if (!bal) continue;
+      const prices = priceLookup.get(id) || {};
+      const p = (typeof prices[lastDate] === 'number' ? prices[lastDate] : (baseNowPrices.get(id) || 0));
+      const usd = bal * (p || 0);
+      entries.push({ id, usd });
+    }
+
+    const nonApt = entries.filter(e => e.id !== 'aptos');
+    nonApt.sort((a, b) => b.usd - a.usd);
+    const top10 = nonApt.slice(0, 10).map(e => e.id);
+
+    const trackedIds = new Set<string>(top10);
+    // Always include APT
+    trackedIds.add('aptos');
 
     for (const id of trackedIds) {
       const curr = currentById.get(id) || 0;
@@ -440,7 +453,7 @@ serve(async (req) => {
     // Use CoinGecko for live prices, fallback to latest historical price we already fetched
     try {
       const tracked = Array.from(trackedIds);
-      const ids = tracked.filter((id) => id !== 'STABLE_USD');
+      const ids = tracked;
       let nowPrices = new Map<string, number>();
       
       // Try CoinGecko for live prices
@@ -527,7 +540,7 @@ serve(async (req) => {
         const bal = currentById.get(id) || 0;
         if (!bal) continue;
         let price = 0;
-        if (id === 'STABLE_USD') {
+        if (id === 'usd-coin' || id === 'tether') {
           price = 1;
         } else if (gotLive && nowPrices.has(id)) {
           price = nowPrices.get(id) || 0;
