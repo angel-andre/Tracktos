@@ -82,6 +82,50 @@ export default function IndexPage() {
     }
   };
 
+  // NFT image helpers with gateway fallbacks
+  const getIpfsPathFromUrl = (u: string): string | null => {
+    if (!u) return null;
+    try {
+      const url = new URL(u);
+      const idx = url.pathname.indexOf('/ipfs/');
+      if (idx !== -1) return url.pathname.slice(idx + '/ipfs/'.length);
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  const buildImageCandidates = (u: string): string[] => {
+    if (!u) return [];
+    const list: string[] = [u];
+    const ipfsPath = getIpfsPathFromUrl(u);
+    if (ipfsPath) {
+      const pushUnique = (s: string) => { if (!list.includes(s)) list.push(s); };
+      pushUnique(`https://cloudflare-ipfs.com/ipfs/${ipfsPath}`);
+      pushUnique(`https://ipfs.io/ipfs/${ipfsPath}`);
+      pushUnique(`https://nftstorage.link/ipfs/${ipfsPath}`);
+      pushUnique(`https://dweb.link/ipfs/${ipfsPath}`);
+    }
+    return list;
+  };
+
+  const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; className?: string }) => {
+    const [i, setI] = React.useState(0);
+    const onError = () => setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
+    const src = srcs[i];
+    return (
+      <img
+        src={src}
+        alt={alt}
+        className={className}
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        crossOrigin="anonymous"
+        onError={onError}
+      />
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#EEEDCA] via-[#D5FAD3] to-[#20211C] py-8 px-4">
       <div className="max-w-3xl mx-auto">
@@ -264,13 +308,10 @@ export default function IndexPage() {
                     <div key={idx} className="border border-gray-200 rounded-lg p-2">
                       <div className="aspect-square bg-gray-100 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
                         {nft.image ? (
-                          <img 
-                            src={nft.image} 
-                            alt={nft.name}
+                          <FallbackImage
+                            srcs={buildImageCandidates(nft.image)}
+                            alt={`${nft.name} - ${nft.collection}`}
                             className="w-full h-full object-cover"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23ddd"/><text x="50%" y="50%" text-anchor="middle" dy=".3em" fill="%23999" font-size="14">No Image</text></svg>';
-                            }}
                           />
                         ) : (
                           <ImageIcon className="w-8 h-8 text-gray-400" />
