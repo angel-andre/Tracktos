@@ -188,7 +188,15 @@ serve(async (req) => {
         'CELL': 'cellena-finance',
         'WAR': 'war-coin',
         'STKAPT': 'staked-aptos',
-        'ZUSDC': 'usd-coin'
+        'ZUSDC': 'usd-coin',
+        'DAI': 'dai',
+        'USDD': 'usdd',
+        'BUSD': 'binance-usd',
+        'WSOL': 'wrapped-solana',
+        'CELO': 'celo',
+        'THL': 'thala',
+        'MOVE': 'movementlabs',
+        'AMAPT': 'amnis-aptos'
       };
 
       // Try CoinGecko first for known tokens
@@ -840,8 +848,107 @@ serve(async (req) => {
       ['LAPTOS', 'APT'],
       ['STAPT', 'APT'],
       ['STKAPT', 'APT'],
-      ['ZAPT', 'APT']
+      ['ZAPT', 'APT'],
+      ['AMAPT', 'APT'],
+      ['WETH', 'ETH'],
+      ['WSOL', 'SOL'],
+      ['WBTC', 'BTC']
     ]);
+    
+    // Protocol-specific swap event parsers
+    const protocolParsers = {
+      // PancakeSwap: Uses standard Withdraw/Deposit events
+      pancakeswap: (events: any[]) => {
+        let from = '', to = '', fromAmt = '0', toAmt = '0';
+        for (const e of events) {
+          const type = String(e?.type || '');
+          const data = e?.data || {};
+          if (type.includes('WithdrawEvent')) {
+            const coin = String(data?.coin_type || '');
+            const amt = String(data?.amount || '0');
+            if (coin && BigInt(amt) > 0n && !from) {
+              from = coin.split('::').pop()?.replace(/>/g, '') || '';
+              fromAmt = amt;
+            }
+          }
+          if (type.includes('DepositEvent')) {
+            const coin = String(data?.coin_type || '');
+            const amt = String(data?.amount || '0');
+            if (coin && BigInt(amt) > 0n && !to) {
+              to = coin.split('::').pop()?.replace(/>/g, '') || '';
+              toAmt = amt;
+            }
+          }
+        }
+        return { from, to, fromAmt, toAmt };
+      },
+      
+      // LiquidSwap: Check for Swap events and standard coin events
+      liquidswap: (events: any[]) => {
+        let from = '', to = '', fromAmt = '0', toAmt = '0';
+        for (const e of events) {
+          const type = String(e?.type || '');
+          const data = e?.data || {};
+          
+          // LiquidSwap-specific swap event
+          if (type.includes('SwapEvent') || type.includes('liquidswap')) {
+            const x_in = String(data?.x_in || '0');
+            const y_in = String(data?.y_in || '0');
+            const x_out = String(data?.x_out || '0');
+            const y_out = String(data?.y_out || '0');
+            
+            if (BigInt(x_in) > 0n && BigInt(y_out) > 0n) {
+              fromAmt = x_in;
+              toAmt = y_out;
+            } else if (BigInt(y_in) > 0n && BigInt(x_out) > 0n) {
+              fromAmt = y_in;
+              toAmt = x_out;
+            }
+          }
+          
+          // Standard events as fallback
+          if (!from && type.includes('WithdrawEvent')) {
+            const coin = String(data?.coin_type || '');
+            if (coin) from = coin.split('::').pop()?.replace(/>/g, '') || '';
+            if (!fromAmt || fromAmt === '0') fromAmt = String(data?.amount || '0');
+          }
+          if (!to && type.includes('DepositEvent')) {
+            const coin = String(data?.coin_type || '');
+            if (coin) to = coin.split('::').pop()?.replace(/>/g, '') || '';
+            if (!toAmt || toAmt === '0') toAmt = String(data?.amount || '0');
+          }
+        }
+        return { from, to, fromAmt, toAmt };
+      },
+      
+      // Thala: Similar to LiquidSwap
+      thala: (events: any[]) => {
+        let from = '', to = '', fromAmt = '0', toAmt = '0';
+        for (const e of events) {
+          const type = String(e?.type || '');
+          const data = e?.data || {};
+          
+          if (type.includes('SwapEvent')) {
+            const amount_in = String(data?.amount_in || data?.amountIn || '0');
+            const amount_out = String(data?.amount_out || data?.amountOut || '0');
+            if (BigInt(amount_in) > 0n) fromAmt = amount_in;
+            if (BigInt(amount_out) > 0n) toAmt = amount_out;
+          }
+          
+          if (!from && type.includes('WithdrawEvent')) {
+            const coin = String(data?.coin_type || '');
+            if (coin) from = coin.split('::').pop()?.replace(/>/g, '') || '';
+            if (!fromAmt || fromAmt === '0') fromAmt = String(data?.amount || '0');
+          }
+          if (!to && type.includes('DepositEvent')) {
+            const coin = String(data?.coin_type || '');
+            if (coin) to = coin.split('::').pop()?.replace(/>/g, '') || '';
+            if (!toAmt || toAmt === '0') toAmt = String(data?.amount || '0');
+          }
+        }
+        return { from, to, fromAmt, toAmt };
+      }
+    };
     
     for (const tx of userTxs) {
       const iso = toISOFromTx(tx);
@@ -944,60 +1051,87 @@ serve(async (req) => {
         
         // Extract swap data - look for any transaction with token movements
         if (tx.success && (isDexSwap || txType === 'Swap' || contractType === 'DEX')) {
-          // Extract swap details from events
-          const events = tx.events || [];
           let fromToken = '';
           let toToken = '';
           let fromAmount = '0';
           let toAmount = '0';
           
-          for (const event of events) {
-            const eventType = String(event?.type || '');
-            const data = event?.data || {};
-            
-            // Detect withdraw/sent coins (user paying)
-            if (eventType.includes('WithdrawEvent') || eventType.includes('0x1::coin::WithdrawEvent')) {
+          // Try protocol-specific parser first
+          const events = tx.events || [];
+          let parsed = { from: '', to: '', fromAmt: '0', toAmt: '0' };
+          
+          if (contractName === 'PancakeSwap' && protocolParsers.pancakeswap) {
+            parsed = protocolParsers.pancakeswap(events);
+          } else if (contractName === 'LiquidSwap' && protocolParsers.liquidswap) {
+            parsed = protocolParsers.liquidswap(events);
+          } else if (contractName === 'Thala' && protocolParsers.thala) {
+            parsed = protocolParsers.thala(events);
+          }
+          
+          if (parsed.from) fromToken = parsed.from;
+          if (parsed.to) toToken = parsed.to;
+          if (parsed.fromAmt && BigInt(parsed.fromAmt) > 0n) fromAmount = parsed.fromAmt;
+          if (parsed.toAmt && BigInt(parsed.toAmt) > 0n) toAmount = parsed.toAmt;
+          
+          // Generic fallback: scan all events for Withdraw/Deposit
+          if (!fromToken || !toToken || fromAmount === '0' || toAmount === '0') {
+            for (const event of events) {
+              const eventType = String(event?.type || '');
+              const data = event?.data || {};
+              
+              // Extract coin type from event type or data
               let coinType = String(data?.coin_type || data?.type_info?.type || '');
-              const amount = String(data?.amount || '0');
               if (!coinType && eventType.includes('<') && eventType.includes('>')) {
                 coinType = eventType.substring(eventType.indexOf('<') + 1, eventType.lastIndexOf('>'));
               }
-              if (amount && BigInt(amount) > 0n && !fromToken) {
-                const symbol = (coinType ? coinType.split('::').pop() : '') || 'Unknown';
-                fromToken = symbol.replace(/>/g, '') || 'Unknown';
-                fromAmount = amount;
+              
+              if (eventType.includes('WithdrawEvent') || eventType.includes('0x1::coin::WithdrawEvent')) {
+                const amount = String(data?.amount || '0');
+                if (amount && BigInt(amount) > 0n && !fromToken) {
+                  const symbol = (coinType ? coinType.split('::').pop() : '') || '';
+                  fromToken = symbol.replace(/>/g, '') || '';
+                  fromAmount = amount;
+                }
               }
-            }
-            
-            // Detect deposit/received coins (user receiving)
-            if (eventType.includes('DepositEvent') || eventType.includes('0x1::coin::DepositEvent')) {
-              let coinType = String(data?.coin_type || data?.type_info?.type || '');
-              const amount = String(data?.amount || '0');
-              if (!coinType && eventType.includes('<') && eventType.includes('>')) {
-                coinType = eventType.substring(eventType.indexOf('<') + 1, eventType.lastIndexOf('>'));
-              }
-              if (amount && BigInt(amount) > 0n && !toToken) {
-                const symbol = (coinType ? coinType.split('::').pop() : '') || 'Unknown';
-                toToken = symbol.replace(/>/g, '') || 'Unknown';
-                toAmount = amount;
+              
+              if (eventType.includes('DepositEvent') || eventType.includes('0x1::coin::DepositEvent')) {
+                const amount = String(data?.amount || '0');
+                if (amount && BigInt(amount) > 0n && !toToken) {
+                  const symbol = (coinType ? coinType.split('::').pop() : '') || '';
+                  toToken = symbol.replace(/>/g, '') || '';
+                  toAmount = amount;
+                }
               }
             }
           }
           
-          // Fallback: infer token types from payload type_arguments if events missing
+          // Final fallback: infer from payload type_arguments
           if ((!fromToken || !toToken) && tx.payload && Array.isArray((tx.payload as any).type_arguments)) {
             const args = ((tx.payload as any).type_arguments as string[]).slice(0, 2);
             const toSymbol = (t: string) => {
               const gen = t && t.includes('<') && t.includes('>') ? t.substring(t.indexOf('<') + 1, t.lastIndexOf('>')) : t;
-              return (gen?.split('::').pop() || 'Unknown').replace(/>/g, '');
+              return (gen?.split('::').pop() || '').replace(/>/g, '');
             };
             if (!fromToken && args[0]) fromToken = toSymbol(args[0]);
             if (!toToken && args[1]) toToken = toSymbol(args[1]);
           }
           
+          // Extract amounts from arguments if still missing
+          if ((!fromAmount || fromAmount === '0' || !toAmount || toAmount === '0') && tx.payload && Array.isArray((tx.payload as any).arguments)) {
+            const args = ((tx.payload as any).arguments as any[]);
+            // Common pattern: first numeric arg is amount_in, second is min_amount_out
+            for (const arg of args) {
+              const argStr = String(arg);
+              if (/^\d+$/.test(argStr) && BigInt(argStr) > 0n) {
+                if (fromAmount === '0') fromAmount = argStr;
+                else if (toAmount === '0') toAmount = argStr;
+              }
+            }
+          }
+          
           // Enhanced volume calculation with symbol aliases
           let volumeUsd = 0;
-          if (fromToken && fromAmount) {
+          if (fromToken && fromAmount && BigInt(fromAmount) > 0n) {
             let lookupSymbol = fromToken.toUpperCase();
             if (symbolAliases.has(lookupSymbol)) {
               lookupSymbol = symbolAliases.get(lookupSymbol)!;
@@ -1007,7 +1141,7 @@ serve(async (req) => {
             const amount = Number(formatUnits(fromAmount, decimals));
             volumeUsd = amount * price;
           }
-          if (volumeUsd === 0 && toToken && toAmount) {
+          if (volumeUsd === 0 && toToken && toAmount && BigInt(toAmount) > 0n) {
             let lookupSymbol = toToken.toUpperCase();
             if (symbolAliases.has(lookupSymbol)) {
               lookupSymbol = symbolAliases.get(lookupSymbol)!;
