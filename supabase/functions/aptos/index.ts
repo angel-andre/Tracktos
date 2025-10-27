@@ -671,21 +671,45 @@ serve(async (req) => {
     
     // Fetch ALL transactions for gas calculation (parallel, large batches)
     console.log(`Fetching ALL ${totalTransactionCount} transactions for gas calculation...`);
-    const gasCalcBatchSize = 1000;
+    const gasCalcBatchSize = 500; // Reduced batch size for reliability
     const gasCalcBatches = Math.ceil(totalTransactionCount / gasCalcBatchSize);
-    const gasCalcPromises = [];
     
-    for (let i = 0; i < gasCalcBatches; i++) {
-      const offset = i * gasCalcBatchSize;
-      const txUrl = `${fullnodeBase}/accounts/${address}/transactions?start=${offset}&limit=${gasCalcBatchSize}`;
-      gasCalcPromises.push(
-        fetch(txUrl, { headers: { 'Accept': 'application/json' } })
-          .then(r => r.ok ? r.json() : [])
-          .catch(() => [])
-      );
+    console.log(`Will fetch ${gasCalcBatches} batches of ${gasCalcBatchSize} transactions each`);
+    
+    // Fetch in smaller parallel chunks to avoid overwhelming the API
+    let allTransactions: any[] = [];
+    const parallelChunkSize = 5; // Process 5 batches at a time
+    
+    for (let chunkStart = 0; chunkStart < gasCalcBatches; chunkStart += parallelChunkSize) {
+      const chunkEnd = Math.min(chunkStart + parallelChunkSize, gasCalcBatches);
+      const chunkPromises = [];
+      
+      for (let i = chunkStart; i < chunkEnd; i++) {
+        const offset = i * gasCalcBatchSize;
+        const txUrl = `${fullnodeBase}/accounts/${address}/transactions?start=${offset}&limit=${gasCalcBatchSize}`;
+        chunkPromises.push(
+          fetch(txUrl, { headers: { 'Accept': 'application/json' } })
+            .then(r => {
+              if (!r.ok) {
+                console.log(`Batch ${i} failed with status ${r.status}`);
+                return [];
+              }
+              return r.json();
+            })
+            .catch(err => {
+              console.log(`Batch ${i} error:`, err.message);
+              return [];
+            })
+        );
+      }
+      
+      const chunkResults = await Promise.all(chunkPromises);
+      const chunkTransactions = chunkResults.flat().filter(tx => tx && typeof tx === 'object');
+      allTransactions.push(...chunkTransactions);
+      
+      console.log(`Fetched chunk ${chunkStart}-${chunkEnd}: ${chunkTransactions.length} transactions (total so far: ${allTransactions.length})`);
     }
     
-    const allTransactions = (await Promise.all(gasCalcPromises)).flat().filter(tx => tx && typeof tx === 'object');
     console.log(`✓ Fetched ${allTransactions.length} transactions for gas calculation`);
     
     // Calculate total gas spent from ALL transactions
@@ -694,8 +718,9 @@ serve(async (req) => {
     
     for (const tx of allTransactions) {
       if (tx.gas_used && tx.gas_unit_price) {
-        const gasUsed = BigInt(tx.gas_used);
-        const gasPrice = BigInt(tx.gas_unit_price);
+        // Safely convert to BigInt with string cleanup
+        const gasUsed = BigInt(String(tx.gas_used).replace(/\D/g, '') || '0');
+        const gasPrice = BigInt(String(tx.gas_unit_price).replace(/\D/g, '') || '0');
         totalGasInOctas += gasUsed * gasPrice;
       }
       
@@ -708,7 +733,7 @@ serve(async (req) => {
     
     activeDays = uniqueDates.size;
     totalGasSpent = formatUnits(String(totalGasInOctas), 8);
-    console.log(`✓ Total gas from ALL transactions: ${totalGasSpent} APT, Active days: ${activeDays}`);
+    console.log(`✓ Total gas from ${allTransactions.length} transactions: ${totalGasSpent} APT, Active days: ${activeDays}`);
     
     // Fetch sample transactions for detailed analysis (NFT purchases, activity parsing)
     let transactions: any[] = [];
