@@ -103,7 +103,7 @@ export default function IndexPage() {
             </h1>
             <Sparkles className="w-6 h-6 text-primary" />
           </div>
-          <p className="text-muted-foreground">explore your Aptos Journey through wallet analytics and insights</p>
+          <p className="text-muted-foreground">Explore your Aptos Journey through wallet analytics and insights</p>
         </div>
 
         {/* Control Panel */}
