@@ -146,7 +146,7 @@ serve(async (req) => {
       }
     }
 
-    // Second pass: ONLY track APT and stablecoins (USDC/USDT) for accurate portfolio value
+    // Second pass: Include APT, stablecoins, AND all other Aptos tokens via CoinGecko platform mapping
     for (const item of balances) {
       const symbol = item.metadata?.symbol?.toUpperCase() || '';
       const decimals = item.metadata?.decimals ?? 8;
@@ -154,8 +154,14 @@ serve(async (req) => {
       const assetType = item.asset_type as string;
       if (balance <= 0) continue;
 
-      // Only include APT or stablecoins (USDC/USDT)
+      // Start with APT and stablecoins
       let cgId: string | null = getCoinGeckoIdIfApt(symbol, assetType) || (isStableUsd(symbol) ? 'STABLE_USD' : null);
+
+      // If not APT/stable, try to map by Aptos contract address via CoinGecko platforms
+      if (!cgId) {
+        const key = normalizeAptosAssetType(assetType);
+        if (key) cgId = aptosPlatformMap.get(key) || null;
+      }
 
       if (cgId) {
         rawTokenBalances.push({ symbol, balance, assetType, coinGeckoId: cgId });
@@ -379,10 +385,13 @@ serve(async (req) => {
     console.log(`Generated ${historicalData.length} historical data points`);
 
     // Inject a live snapshot for "today" using current balances and real-time prices
+    // Use CoinGecko for live prices, fallback to latest historical price we already fetched
     try {
       const tracked = Array.from(trackedIds);
       const ids = tracked.filter((id) => id !== 'STABLE_USD');
       let nowPrices = new Map<string, number>();
+      
+      // Try CoinGecko for live prices
       if (ids.length > 0) {
         const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids.join(','))}&vs_currencies=usd`;
         const resp = await fetch(url);
@@ -390,25 +399,14 @@ serve(async (req) => {
           const j = await resp.json();
           for (const id of ids) {
             const p = j?.[id]?.usd;
-            if (typeof p === 'number') nowPrices.set(id, p);
+            if (typeof p === 'number') {
+              nowPrices.set(id, p);
+              console.log(`✓ Live price for ${id}: $${p}`);
+            }
           }
         } else {
-          console.log('simple/price fetch failed:', resp.status);
+          console.log('CoinGecko simple/price fetch failed:', resp.status);
         }
-      }
-
-      // Secondary price source for APT: Binance APT/USDT, to improve accuracy
-      try {
-        const bin = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=APTUSDT');
-        if (bin.ok) {
-          const b = await bin.json();
-          const aptPrice = parseFloat(b?.price);
-          if (!Number.isNaN(aptPrice) && aptPrice > 0) {
-            nowPrices.set('aptos', aptPrice);
-          }
-        }
-      } catch (_e) {
-        // ignore secondary source failure
       }
 
       const gotLive = nowPrices.size > 0;
@@ -417,10 +415,17 @@ serve(async (req) => {
       for (const id of tracked) {
         const bal = currentById.get(id) || 0;
         if (!bal) continue;
-        const price = id === 'STABLE_USD'
-          ? 1
-          : (gotLive ? (nowPrices.get(id) ?? 0) : getPriceFor(id, dateList.length - 1));
+        let price = 0;
+        if (id === 'STABLE_USD') {
+          price = 1;
+        } else if (gotLive && nowPrices.has(id)) {
+          price = nowPrices.get(id) || 0;
+        } else {
+          // Fallback to latest historical price
+          price = getPriceFor(id, dateList.length - 1);
+        }
         snapshot += bal * price;
+        console.log(`  ${id}: ${bal.toFixed(4)} × $${price.toFixed(6)} = $${(bal * price).toFixed(2)}`);
       }
       snapshot = Math.round(snapshot * 100) / 100;
 
