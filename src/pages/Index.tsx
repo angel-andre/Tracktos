@@ -40,6 +40,7 @@ interface NFT {
   image: string;
   price?: string;
   purchaseHash?: string;
+  tokenDataId?: string;
 }
 
 interface Transaction {
@@ -239,7 +240,7 @@ export default function IndexPage() {
 
             <TabsContent value="nfts" className="space-y-6">
               <PremiumNFTsCard nfts={data?.nfts || null} loading={loading} />
-              <NFTsCard nfts={data?.nfts || null} loading={loading} />
+              <NFTsCard nfts={data?.nfts || null} loading={loading} network={network} />
             </TabsContent>
 
             <TabsContent value="activity" className="space-y-6">

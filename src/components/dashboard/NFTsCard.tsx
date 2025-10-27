@@ -10,11 +10,13 @@ interface NFT {
   collection: string;
   image: string;
   price?: string;
+  tokenDataId?: string;
 }
 
 interface NFTsCardProps {
   nfts: NFT[] | null;
   loading: boolean;
+  network?: "mainnet" | "testnet";
 }
 
 const extractIpfsPath = (u: string): string | null => {
@@ -204,7 +206,7 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
   );
 };
 
-export function NFTsCard({ nfts, loading }: NFTsCardProps) {
+export function NFTsCard({ nfts, loading, network = "mainnet" }: NFTsCardProps) {
   const [selectedCollection, setSelectedCollection] = React.useState<string>("all");
   const [sortBy, setSortBy] = React.useState<string>("default");
 
@@ -316,36 +318,58 @@ export function NFTsCard({ nfts, loading }: NFTsCardProps) {
             </div>
             
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {filteredAndSortedNFTs.map((nft, idx) => (
-              <div 
-                key={idx} 
-                className="group border border-border/50 rounded-lg p-2 bg-secondary/20 hover:bg-secondary/40 hover:scale-105 transition-all duration-300 hover:shadow-lg"
-              >
-                <div className="aspect-square bg-muted/30 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
-                  {nft.image ? (
-                    <FallbackImage
-                      srcs={buildImageCandidates(nft.image)}
-                      alt={`${nft.name} - ${nft.collection}`}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <ImageIcon className="w-8 h-8 text-muted-foreground" />
-                  )}
-                </div>
-                <p className="text-xs font-semibold text-foreground truncate">{nft.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{nft.collection}</p>
-                <div className="mt-2 pt-2 border-t border-border/30">
-                  <p className="text-xs text-muted-foreground">Purchase Price:</p>
-                  <p className="text-sm font-bold text-primary">
-                    {nft.price ? (
-                      parseFloat(nft.price.toString().split(' ')[0]) === 0 
-                        ? 'Free Mint' 
-                        : `${formatNumber(nft.price.toString().split(' ')[0], 2)} APT`
-                    ) : 'N/A'}
-                  </p>
-                </div>
-              </div>
-              ))}
+              {filteredAndSortedNFTs.map((nft, idx) => {
+                const explorerUrl = nft.tokenDataId 
+                  ? `https://explorer.aptoslabs.com/object/${nft.tokenDataId}?network=${network}`
+                  : undefined;
+                
+                const CardContent = (
+                  <>
+                    <div className="aspect-square bg-muted/30 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
+                      {nft.image ? (
+                        <FallbackImage
+                          srcs={buildImageCandidates(nft.image)}
+                          alt={`${nft.name} - ${nft.collection}`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <ImageIcon className="w-8 h-8 text-muted-foreground" />
+                      )}
+                    </div>
+                    <p className="text-xs font-semibold text-foreground truncate">{nft.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{nft.collection}</p>
+                    <div className="mt-2 pt-2 border-t border-border/30">
+                      <p className="text-xs text-muted-foreground">Purchase Price:</p>
+                      <p className="text-sm font-bold text-primary">
+                        {nft.price ? (
+                          parseFloat(nft.price.toString().split(' ')[0]) === 0 
+                            ? 'Free Mint' 
+                            : `${formatNumber(nft.price.toString().split(' ')[0], 2)} APT`
+                        ) : 'N/A'}
+                      </p>
+                    </div>
+                  </>
+                );
+
+                return explorerUrl ? (
+                  <a
+                    key={idx}
+                    href={explorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group border border-border/50 rounded-lg p-2 bg-secondary/20 hover:bg-secondary/40 hover:scale-105 transition-all duration-300 hover:shadow-lg cursor-pointer block"
+                  >
+                    {CardContent}
+                  </a>
+                ) : (
+                  <div
+                    key={idx}
+                    className="group border border-border/50 rounded-lg p-2 bg-secondary/20 hover:bg-secondary/40 transition-all duration-300"
+                  >
+                    {CardContent}
+                  </div>
+                );
+              })}
             </div>
           </>
         ) : (
