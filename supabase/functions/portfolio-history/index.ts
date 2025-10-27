@@ -38,14 +38,19 @@ serve(async (req) => {
 
     console.log(`Fetching portfolio history for ${address} with timeframe ${timeframe}`);
 
-    // Calculate time range
-    const now = Date.now();
-    const days = timeframe === '7D' ? 7 : timeframe === '30D' ? 30 : 90;
-    const startTimestamp = now - (days * 24 * 60 * 60 * 1000);
+    // Calculate time range - ensure we're using past dates only
+    const now = new Date();
+    // Set to yesterday to ensure we have historical data
+    now.setDate(now.getDate() - 1);
+    now.setHours(0, 0, 0, 0);
     
-    // Number of data points (approximately one per day for better granularity)
-    const dataPoints = Math.min(days, 30);
-    const interval = (now - startTimestamp) / dataPoints;
+    const days = timeframe === '7D' ? 7 : timeframe === '30D' ? 30 : 90;
+    const startDate = new Date(now);
+    startDate.setDate(startDate.getDate() - days);
+    
+    // Reduce data points to avoid timeout (1 point every 3 days for 30D/90D)
+    const dataPoints = timeframe === '7D' ? 7 : timeframe === '30D' ? 10 : 15;
+    const interval = (now.getTime() - startDate.getTime()) / dataPoints;
 
     console.log(`Generating ${dataPoints} data points over ${days} days`);
 
@@ -138,8 +143,12 @@ serve(async (req) => {
     const coinGeckoIdsList = tokenBalances.map(t => t.coinGeckoId).join(',');
 
     for (let i = 0; i <= dataPoints; i++) {
-      const timestamp = startTimestamp + (interval * i);
+      const timestamp = startDate.getTime() + (interval * i);
       const date = new Date(timestamp);
+      
+      // Ensure we're not querying future dates
+      if (date > now) continue;
+      
       const dateStr = date.toISOString().split('T')[0];
       
       // CoinGecko historical price endpoint (free tier, 1 call per token)
@@ -153,8 +162,8 @@ serve(async (req) => {
       
       let totalValue = 0;
       
-      // Fetch prices for each token at this historical date
-      for (const token of tokenBalances) {
+      // Fetch prices for ALL tokens in parallel for this date to reduce time
+      const pricePromises = tokenBalances.map(async (token) => {
         try {
           const priceUrl = `https://api.coingecko.com/api/v3/coins/${token.coinGeckoId}/history?date=${formattedDate}`;
           const priceResp = await fetch(priceUrl);
@@ -163,19 +172,24 @@ serve(async (req) => {
             const priceData = await priceResp.json();
             const price = priceData.market_data?.current_price?.usd || 0;
             const value = token.balance * price;
-            totalValue += value;
             
             console.log(`  ${token.symbol}: $${price.toFixed(4)} x ${token.balance.toFixed(2)} = $${value.toFixed(2)}`);
+            return value;
           } else {
-            console.log(`  ${token.symbol}: Price not available`);
+            console.log(`  ${token.symbol}: Price not available (${priceResp.status})`);
+            return 0;
           }
-          
-          // Rate limiting: wait 1.5s between requests (CoinGecko free tier allows ~10-30 calls/min)
-          await new Promise(resolve => setTimeout(resolve, 1500));
         } catch (error) {
           console.error(`Error fetching price for ${token.symbol}:`, error);
+          return 0;
         }
-      }
+      });
+      
+      const values = await Promise.all(pricePromises);
+      totalValue = values.reduce((sum, val) => sum + val, 0);
+      
+      // Rate limiting: wait 2s between date points (batch requests)
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       historicalData.push({
         date: dateStr,
