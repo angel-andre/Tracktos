@@ -83,29 +83,58 @@ export default function IndexPage() {
   };
 
   // NFT image helpers with gateway fallbacks
-  const getIpfsPathFromUrl = (u: string): string | null => {
+  const extractIpfsPath = (u: string): string | null => {
     if (!u) return null;
+    if (u.startsWith('ipfs://')) {
+      return u.replace(/^ipfs:\/\//, '').replace(/^ipfs\//, '');
+    }
     try {
       const url = new URL(u);
-      const idx = url.pathname.indexOf('/ipfs/');
-      if (idx !== -1) return url.pathname.slice(idx + '/ipfs/'.length);
-      return null;
+      const match = url.pathname.match(/\/ipfs\/(.+)/);
+      if (match && match[1]) return match[1];
     } catch {
-      return null;
+      // If it's a raw CID
+      if (/^(Qm|bafy)[A-Za-z0-9]+/.test(u)) return u;
     }
+    return null;
   };
 
   const buildImageCandidates = (u: string): string[] => {
     if (!u) return [];
-    const list: string[] = [u];
-    const ipfsPath = getIpfsPathFromUrl(u);
+    const list: string[] = [];
+    const pushUnique = (s: string) => { if (s && !list.includes(s)) list.push(s); };
+
+    // Original first
+    pushUnique(u);
+
+    // IPFS gateways
+    const ipfsPath = extractIpfsPath(u);
     if (ipfsPath) {
-      const pushUnique = (s: string) => { if (!list.includes(s)) list.push(s); };
-      pushUnique(`https://cloudflare-ipfs.com/ipfs/${ipfsPath}`);
-      pushUnique(`https://ipfs.io/ipfs/${ipfsPath}`);
-      pushUnique(`https://nftstorage.link/ipfs/${ipfsPath}`);
-      pushUnique(`https://dweb.link/ipfs/${ipfsPath}`);
+      const gateways = [
+        `https://cloudflare-ipfs.com/ipfs/${ipfsPath}`,
+        `https://ipfs.io/ipfs/${ipfsPath}`,
+        `https://nftstorage.link/ipfs/${ipfsPath}`,
+        `https://dweb.link/ipfs/${ipfsPath}`,
+        `https://gateway.pinata.cloud/ipfs/${ipfsPath}`,
+        `https://ipfs.cf-ipfs.com/ipfs/${ipfsPath}`,
+        `https://gw3.io/ipfs/${ipfsPath}`,
+      ];
+      gateways.forEach(pushUnique);
     }
+
+    // Arweave alternates
+    try {
+      const url = new URL(u);
+      if (url.hostname.endsWith('arweave.net')) {
+        const path = url.pathname.replace(/^\/+/, '');
+        [
+          `https://arweave.net/${path}`,
+          `https://ar-io.net/${path}`,
+          `https://gateway.irys.xyz/${path}`,
+        ].forEach(pushUnique);
+      }
+    } catch {}
+
     return list;
   };
 
@@ -119,8 +148,7 @@ export default function IndexPage() {
         alt={alt}
         className={className}
         loading="lazy"
-        referrerPolicy="no-referrer"
-        crossOrigin="anonymous"
+        decoding="async"
         onError={onError}
       />
     );
