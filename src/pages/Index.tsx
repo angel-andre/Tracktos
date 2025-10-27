@@ -193,12 +193,14 @@ export default function IndexPage() {
           <div className="space-y-6">
             <ActivityCard activity={data?.activity || null} loading={loading} />
           </div>
-        </div>
 
-        {/* Portfolio History Chart */}
-        {data && (
-          <PortfolioChartCard address={address} />
-        )}
+          {/* Portfolio History Chart - spans 2 columns on large screens */}
+          {data && (
+            <div className="lg:col-span-2">
+              <PortfolioChartCard address={address} />
+            </div>
+          )}
+        </div>
 
         {/* Featured NFTs Section */}
         <PremiumNFTsCard nfts={data?.nfts || null} loading={loading} />

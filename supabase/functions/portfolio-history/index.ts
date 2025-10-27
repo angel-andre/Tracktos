@@ -128,9 +128,22 @@ serve(async (req) => {
       }
     }
 
-    console.log(`Found ${tokenBalances.length} tokens with balances:`, tokenBalances.map(t => t.symbol));
+    // Deduplicate tokens by CoinGecko ID and sum balances (avoid double counting same token)
+    const aggregated = new Map<string, TokenBalance>();
+    for (const t of tokenBalances) {
+      const existing = aggregated.get(t.coinGeckoId);
+      if (existing) {
+        existing.balance += t.balance;
+        aggregated.set(t.coinGeckoId, existing);
+      } else {
+        aggregated.set(t.coinGeckoId, { ...t });
+      }
+    }
+    const uniqueTokenBalances = Array.from(aggregated.values());
 
-    if (tokenBalances.length === 0) {
+    console.log(`Found ${uniqueTokenBalances.length} unique tokens with balances:`, uniqueTokenBalances.map(t => `${t.symbol}(${t.balance.toFixed(2)})`));
+
+    if (uniqueTokenBalances.length === 0) {
       // Return empty array if no tokens
       return new Response(
         JSON.stringify([]),
@@ -138,64 +151,60 @@ serve(async (req) => {
       );
     }
 
-    // Step 2: Fetch historical prices and calculate portfolio values
+    // Step 2: Fetch historical prices once per token and calculate portfolio values
     const historicalData: HistoricalDataPoint[] = [];
-    const coinGeckoIdsList = tokenBalances.map(t => t.coinGeckoId).join(',');
 
-    for (let i = 0; i <= dataPoints; i++) {
-      const timestamp = startDate.getTime() + (interval * i);
-      const date = new Date(timestamp);
-      
-      // Ensure we're not querying future dates
-      if (date > now) continue;
-      
-      const dateStr = date.toISOString().split('T')[0];
-      
-      // CoinGecko historical price endpoint (free tier, 1 call per token)
-      // Format: DD-MM-YYYY
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const year = date.getFullYear();
-      const formattedDate = `${day}-${month}-${year}`;
-      
-      console.log(`Fetching prices for ${dateStr}...`);
-      
-      let totalValue = 0;
-      
-      // Fetch prices for ALL tokens in parallel for this date to reduce time
-      const pricePromises = tokenBalances.map(async (token) => {
+    // Build list of target dates (YYYY-MM-DD) over the range
+    const dateList: string[] = [];
+    for (let i = 0; i < days; i++) {
+      const d = new Date(startDate);
+      d.setDate(startDate.getDate() + i + 1); // start the day after startDate up to 'now'
+      if (d > now) break;
+      dateList.push(d.toISOString().split('T')[0]);
+    }
+
+    console.log(`Will compute values for dates:`, dateList);
+
+    // Fetch market charts for each token in parallel (daily prices)
+    const priceMaps = await Promise.all(
+      uniqueTokenBalances.map(async (token) => {
         try {
-          const priceUrl = `https://api.coingecko.com/api/v3/coins/${token.coinGeckoId}/history?date=${formattedDate}`;
-          const priceResp = await fetch(priceUrl);
-          
-          if (priceResp.ok) {
-            const priceData = await priceResp.json();
-            const price = priceData.market_data?.current_price?.usd || 0;
-            const value = token.balance * price;
-            
-            console.log(`  ${token.symbol}: $${price.toFixed(4)} x ${token.balance.toFixed(2)} = $${value.toFixed(2)}`);
-            return value;
-          } else {
-            console.log(`  ${token.symbol}: Price not available (${priceResp.status})`);
-            return 0;
+          const url = `https://api.coingecko.com/api/v3/coins/${token.coinGeckoId}/market_chart?vs_currency=usd&days=${days + 1}&interval=daily`;
+          const resp = await fetch(url);
+          if (!resp.ok) {
+            console.log(`${token.symbol}: market_chart not available (${resp.status})`);
+            return { id: token.coinGeckoId, prices: {} as Record<string, number> };
           }
-        } catch (error) {
-          console.error(`Error fetching price for ${token.symbol}:`, error);
-          return 0;
+          const data = await resp.json();
+          const series: Array<[number, number]> = data.prices || [];
+          const map: Record<string, number> = {};
+          for (const [ts, price] of series) {
+            const ds = new Date(ts).toISOString().split('T')[0];
+            map[ds] = price;
+          }
+          console.log(`${token.symbol}: loaded ${Object.keys(map).length} price points`);
+          return { id: token.coinGeckoId, prices: map };
+        } catch (e) {
+          console.error(`Error fetching market_chart for ${token.symbol}:`, e);
+          return { id: token.coinGeckoId, prices: {} as Record<string, number> };
         }
-      });
-      
-      const values = await Promise.all(pricePromises);
-      totalValue = values.reduce((sum, val) => sum + val, 0);
-      
-      // Rate limiting: wait 2s between date points (batch requests)
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      historicalData.push({
-        date: dateStr,
-        value: Math.round(totalValue * 100) / 100
-      });
-      
+      })
+    );
+
+    // Build a quick lookup from token ID to its daily prices
+    const priceLookup = new Map<string, Record<string, number>>(
+      priceMaps.map((p) => [p.id, p.prices])
+    );
+
+    // For each date, sum current balances * historical price
+    for (const dateStr of dateList) {
+      let totalValue = 0;
+      for (const token of uniqueTokenBalances) {
+        const tokenPrices = priceLookup.get(token.coinGeckoId) || {};
+        const price = tokenPrices[dateStr] ?? 0;
+        totalValue += token.balance * price;
+      }
+      historicalData.push({ date: dateStr, value: Math.round(totalValue * 100) / 100 });
       console.log(`✓ ${dateStr}: $${totalValue.toFixed(2)}`);
     }
 
