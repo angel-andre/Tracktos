@@ -265,8 +265,29 @@ serve(async (req) => {
 
     if (idsNeedingBase.length > 0) {
       try {
+        // Try to get APT base price from CoinGecko coins endpoint instead of Dex
+        if (idsNeedingBase.includes('aptos')) {
+          try {
+            const cgResp = await fetch('https://api.coingecko.com/api/v3/coins/aptos?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false');
+            if (cgResp.ok) {
+              const cg = await cgResp.json();
+              const p = Number(cg?.market_data?.current_price?.usd);
+              if (Number.isFinite(p)) {
+                baseNowPrices.set('aptos', p);
+                console.log(`✓ Base price for APT via CG coins: $${p}`);
+              }
+            } else {
+              console.log('CG coins fallback failed:', cgResp.status);
+            }
+          } catch (e) {
+            console.log('CG coins fallback error:', e);
+          }
+        }
+
+        const idsForDex = idsNeedingBase.filter(id => id !== 'aptos' && id !== 'usd-coin' && id !== 'tether');
+
         const dexResults = await Promise.all(
-          idsNeedingBase.map(async (id) => {
+          idsForDex.map(async (id) => {
             const sym = symbolById.get(id);
             if (!sym) return null;
             try {
@@ -557,12 +578,13 @@ serve(async (req) => {
       if (historicalData.length) {
         const lastIdx = historicalData.length - 1;
         if (historicalData[lastIdx].date === todayStr) {
-          // Only override today's value if we successfully fetched live prices.
-          if (gotLive) {
+          // Only override today's value if we have a reliable live price for APT
+          const overrideToday = nowPrices.has('aptos');
+          if (overrideToday) {
             historicalData[lastIdx].value = snapshot;
             console.log(`Updated live snapshot for ${todayStr} with real-time prices: $${snapshot.toFixed(2)}`);
           } else {
-            console.log(`Kept computed value for ${todayStr}; live prices unavailable, used historical fallback in calculation.`);
+            console.log(`Kept computed value for ${todayStr}; apt live price unavailable, used historical fallback in calculation.`);
           }
         } else {
           // If today isn't present, append using best available (live or historical fallback)
