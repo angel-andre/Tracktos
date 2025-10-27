@@ -159,24 +159,46 @@ serve(async (req) => {
       }
     }
 
-    // Finalize APT liquid balance - prefer coin standard over FA aggregation
-    let aptCoinRaw = 0n;
-    if (data.current_coin_balances) {
-      for (const cb of data.current_coin_balances) {
-        const t = cb.coin_type || '';
-        if (t.includes('0x1::aptos_coin::AptosCoin')) {
-          const rd = String(cb.amount ?? '0').replace(/\D/g, '');
-          if (rd) aptCoinRaw += BigInt(rd);
+    // Finalize APT liquid balance using Fullnode CoinStore for accuracy
+    aptBalance = formatUnits(String(aptRaw), 8); // default fallback from FA aggregation
+    try {
+      const primaryBase = network === 'testnet'
+        ? 'https://fullnode.testnet.aptoslabs.com/v1'
+        : 'https://api.mainnet.aptoslabs.com/v1';
+      const altBase = network === 'testnet'
+        ? 'https://api.testnet.aptoslabs.com/v1'
+        : 'https://fullnode.mainnet.aptoslabs.com/v1';
+
+      const coinStorePath = `/accounts/${address}/resource/0x1::coin::CoinStore%3C0x1::aptos_coin::AptosCoin%3E`;
+
+      async function fetchCoinStore(base: string) {
+        const resp = await fetch(`${base}${coinStorePath}`, { headers: { 'Accept': 'application/json' } });
+        if (!resp.ok) throw new Error(`CoinStore fetch failed ${resp.status}`);
+        const js = await resp.json();
+        const raw = js?.data?.coin?.value ?? js?.coin?.value ?? '0';
+        const digits = String(raw).replace(/\D/g, '');
+        return digits ? BigInt(digits) : 0n;
+      }
+
+      let coinRaw: bigint | null = null;
+      try {
+        coinRaw = await fetchCoinStore(primaryBase);
+      } catch (e) {
+        try {
+          coinRaw = await fetchCoinStore(altBase);
+        } catch (_) {
+          coinRaw = null;
         }
       }
-    }
 
-    if (aptCoinRaw > 0n) {
-      aptBalance = formatUnits(String(aptCoinRaw), 8);
-      console.log('✓ APT balance (coin):', aptBalance);
-    } else {
-      aptBalance = formatUnits(String(aptRaw), 8);
-      console.log('✓ APT balance (aggregated FA fallback):', aptBalance);
+      if (coinRaw !== null && coinRaw >= 0n) {
+        aptBalance = formatUnits(String(coinRaw), 8);
+        console.log('✓ APT balance (CoinStore):', aptBalance);
+      } else {
+        console.log('Using FA aggregated fallback APT balance:', aptBalance);
+      }
+    } catch (e) {
+      console.log('CoinStore lookup failed; using FA aggregated fallback APT balance:', aptBalance);
     }
 
     // Parse staked APT
@@ -217,6 +239,21 @@ serve(async (req) => {
       return u;
     };
 
+    const proxyImage = (u: string) => {
+      if (!u) return u;
+      try {
+        const url = new URL(u);
+        const host = url.hostname.toLowerCase();
+        // Keep trusted hosts direct
+        if (host.endsWith('arweave.net') || host.endsWith('cdn.galxe.com')) return u;
+        // Proxy all other hosts to normalize headers/content-type
+        const naked = `${url.hostname}${url.pathname}${url.search}`;
+        return `https://images.weserv.nl/?url=${encodeURIComponent(naked)}`;
+      } catch (_) {
+        return u;
+      }
+    };
+
     let metadataFetches = 0;
 
     if (data.current_token_ownerships_v2) {
@@ -248,7 +285,7 @@ serve(async (req) => {
 
           image = resolveIpfs(image);
           image = normalizeGateway(image);
-
+          image = proxyImage(image);
           nfts.push({ name, collection, image });
           console.log('✓ NFT:', name, 'img:', image?.slice(0, 100));
         }
