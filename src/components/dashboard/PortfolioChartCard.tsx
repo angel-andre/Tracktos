@@ -39,19 +39,8 @@ export function PortfolioChartCard({ address, currentTotalUsdValue }: PortfolioC
           setData([]);
         } else {
           console.log('Portfolio history data:', historyData);
-          // Align today's value with Token Holdings total to keep sources consistent
-          let processed = (historyData as HistoricalDataPoint[]) || [];
-          if (typeof currentTotalUsdValue === 'number' && isFinite(currentTotalUsdValue)) {
-            const todayStr = new Date().toISOString().split('T')[0];
-            const idx = processed.findIndex(p => p.date === todayStr);
-            if (idx >= 0) {
-              processed = [...processed];
-              processed[idx] = { ...processed[idx], value: currentTotalUsdValue };
-            } else {
-              processed = [...processed, { date: todayStr, value: currentTotalUsdValue }];
-            }
-          }
-          setData(processed);
+          // Use the API data as-is without overriding
+          setData((historyData as HistoricalDataPoint[]) || []);
         }
       } catch (error) {
         console.error('Error:', error);
