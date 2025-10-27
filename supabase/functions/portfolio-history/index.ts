@@ -282,6 +282,25 @@ serve(async (req) => {
           } catch (e) {
             console.log('CG coins fallback error:', e);
           }
+
+          // Secondary fallback for APT if CoinGecko is rate-limited
+          if (!baseNowPrices.has('aptos')) {
+            try {
+              const cc = await fetch('https://api.coincap.io/v2/assets/aptos');
+              if (cc.ok) {
+                const j = await cc.json();
+                const p = Number(j?.data?.priceUsd);
+                if (Number.isFinite(p) && p > 0) {
+                  baseNowPrices.set('aptos', p);
+                  console.log(`✓ Base price for APT via CoinCap: $${p}`);
+                }
+              } else {
+                console.log('CoinCap APT base fetch failed:', cc.status);
+              }
+            } catch (e2) {
+              console.log('CoinCap APT base fetch error:', e2);
+            }
+          }
         }
 
         const idsForDex = idsNeedingBase.filter(id => id !== 'aptos' && id !== 'usd-coin' && id !== 'tether');

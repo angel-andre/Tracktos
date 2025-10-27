@@ -231,13 +231,17 @@ serve(async (req) => {
       }
 
       // For tokens not found in CoinGecko, try DexScreener IN PARALLEL
-      const missingTokens = symbols.filter(s => !priceMap.has(s.toUpperCase()));
+      let missingTokens = symbols.filter(s => !priceMap.has(s.toUpperCase()));
       
-      if (missingTokens.length > 0) {
-        console.log('Fetching prices from DexScreener (parallel) for missing tokens:', missingTokens.join(', '));
+      // Never use DexScreener for core assets; enforce stablecoins and use dedicated APT fallback
+      const CORE_EXCLUDED = new Set(['APT', 'USDC', 'USDT']);
+      const dexCandidates = missingTokens.filter(s => !CORE_EXCLUDED.has(s.toUpperCase()));
+      
+      if (dexCandidates.length > 0) {
+        console.log('Fetching prices from DexScreener (parallel) for missing tokens:', dexCandidates.join(', '));
         
         // Fetch all DexScreener prices concurrently
-        const dexPromises = missingTokens.map(async (symbol) => {
+        const dexPromises = dexCandidates.map(async (symbol) => {
           const assetType = assetTypes[symbol];
           if (!assetType) return null;
 
@@ -277,6 +281,27 @@ serve(async (req) => {
         });
       }
 
+      // Ensure core assets have reasonable prices even if CoinGecko ratelimits
+      try {
+        if (!priceMap.has('USDC')) priceMap.set('USDC', 1);
+        if (!priceMap.has('USDT')) priceMap.set('USDT', 1);
+
+        if (!priceMap.has('APT')) {
+          // Fallback to CoinCap for APT
+          const cc = await fetch('https://api.coincap.io/v2/assets/aptos');
+          if (cc.ok) {
+            const j = await cc.json();
+            const p = Number(j?.data?.priceUsd);
+            if (Number.isFinite(p) && p > 0) {
+              priceMap.set('APT', p);
+              console.log(`✓ Fallback APT price from CoinCap: $${p}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.log('Core asset fallback pricing failed:', e);
+      }
+
       return priceMap;
     };
 
@@ -301,6 +326,12 @@ serve(async (req) => {
       // Fetch all historical prices concurrently
       const historicalPromises = symbols.map(async (symbol) => {
         const sym = symbol.toUpperCase();
+
+        // Stablecoins ~ $1
+        if (sym === 'USDC' || sym === 'USDT') {
+          return { symbol: sym, price: 1 };
+        }
+
         const coinId = coinGeckoIds[sym];
 
         // 1) Try CoinGecko market_chart
@@ -343,7 +374,28 @@ serve(async (req) => {
           }
         }
 
-        // 3) Fallback: DexScreener priceChange.h24
+        // 3) Fallback: CoinCap for APT specifically
+        if (sym === 'APT') {
+          try {
+            const cc = await fetch('https://api.coincap.io/v2/assets/aptos');
+            if (cc.ok) {
+              const j = await cc.json();
+              const current = Number(j?.data?.priceUsd);
+              const pct = Number(j?.data?.changePercent24Hr);
+              if (Number.isFinite(current) && Number.isFinite(pct)) {
+                const price24hAgo = current / (1 + pct / 100);
+                if (price24hAgo > 0) {
+                  console.log(`✓ CoinCap back-calc 24h-ago APT: $${price24hAgo}`);
+                  return { symbol: sym, price: price24hAgo };
+                }
+              }
+            }
+          } catch (e) {
+            console.log('CoinCap 24h APT error:', e);
+          }
+        }
+
+        // 4) Fallback: DexScreener priceChange.h24
         try {
           const dexUrl = `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(sym + ' aptos')}`;
           const response = await fetch(dexUrl);
