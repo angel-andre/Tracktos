@@ -275,26 +275,62 @@ serve(async (req) => {
     // 3) Compute end-of-day balances per date using current balances and suffix sums of flows
     const currentById = new Map<string, number>(uniqueTokenBalances.map(t => [t.coinGeckoId, t.balance]));
 
+    // Compute starting balances by reversing flows over the whole window
+    const totalFlowById = new Map<string, number>();
+    for (const m of flowsByDateById.values()) {
+      for (const [id, delta] of m.entries()) {
+        totalFlowById.set(id, (totalFlowById.get(id) || 0) + delta);
+      }
+    }
+
+    const startBalanceById = new Map<string, number>();
+    const trackedIds = new Set<string>([...priceLookup.keys()]);
+    for (const t of uniqueTokenBalances) trackedIds.add(t.coinGeckoId);
+
+    for (const id of trackedIds) {
+      const curr = currentById.get(id) || 0;
+      const totalFlow = totalFlowById.get(id) || 0;
+      startBalanceById.set(id, curr - totalFlow);
+    }
+
+    // Helper to get price with fallback to the most recent previous day that has a price
+    const getPriceFor = (id: string, dateIndex: number): number => {
+      const prices = priceLookup.get(id) || {};
+      for (let k = dateIndex; k >= 0; k--) {
+        const ds = dateList[k];
+        const p = prices[ds];
+        if (typeof p === 'number') return p;
+      }
+      return 0;
+    };
+
+    // Roll forward day by day from the starting balance, applying flows per day
+    const runningById = new Map<string, number>(startBalanceById);
     const historicalData: HistoricalDataPoint[] = [];
+
     for (let i = 0; i < dateList.length; i++) {
       const dateStr = dateList[i];
-      let totalValue = 0;
-      for (const t of uniqueTokenBalances) {
-        const id = t.coinGeckoId;
-        // Sum flows after this day to subtract from current balance
-        let suffix = 0;
-        for (let j = i + 1; j < dateList.length; j++) {
-          const d = dateList[j];
-          const m = flowsByDateById.get(d);
-          if (m) suffix += (m.get(id) || 0);
+
+      // Apply flows for this day first to represent end-of-day balances
+      const dayFlows = flowsByDateById.get(dateStr);
+      if (dayFlows) {
+        for (const [id, delta] of dayFlows.entries()) {
+          runningById.set(id, (runningById.get(id) || 0) + delta);
         }
-        const eodBalance = (currentById.get(id) || 0) - suffix;
-        const tokenPrices = priceLookup.get(id) || {};
-        const price = tokenPrices[dateStr] ?? 0;
-        totalValue += eodBalance * price;
       }
-      historicalData.push({ date: dateStr, value: Math.round(totalValue * 100) / 100 });
-      console.log(`✓ ${dateStr}: $${totalValue.toFixed(2)}`);
+
+      // Price the portfolio
+      let totalValue = 0;
+      for (const id of trackedIds) {
+        const bal = runningById.get(id) || 0;
+        if (!bal) continue;
+        const price = getPriceFor(id, i);
+        totalValue += bal * price;
+      }
+
+      const val = Math.round(totalValue * 100) / 100;
+      historicalData.push({ date: dateStr, value: val });
+      console.log(`✓ ${dateStr}: $${val.toFixed(2)}`);
     }
 
     console.log(`Generated ${historicalData.length} historical data points`);
