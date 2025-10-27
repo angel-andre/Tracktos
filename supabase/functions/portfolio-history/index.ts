@@ -385,6 +385,50 @@ serve(async (req) => {
 
     console.log(`Generated ${historicalData.length} historical data points`);
 
+    // Inject a live snapshot for "today" using current balances and real-time prices
+    try {
+      const tracked = Array.from(trackedIds);
+      const ids = tracked.filter((id) => id !== 'STABLE_USD');
+      let nowPrices = new Map<string, number>();
+      if (ids.length > 0) {
+        const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids.join(','))}&vs_currencies=usd`;
+        const resp = await fetch(url);
+        if (resp.ok) {
+          const j = await resp.json();
+          for (const id of ids) {
+            const p = j?.[id]?.usd;
+            if (typeof p === 'number') nowPrices.set(id, p);
+          }
+        } else {
+          console.log('simple/price fetch failed:', resp.status);
+        }
+      }
+
+      let snapshot = 0;
+      for (const id of tracked) {
+        const bal = currentById.get(id) || 0;
+        if (!bal) continue;
+        const price = id === 'STABLE_USD' ? 1 : (nowPrices.get(id) ?? 0);
+        snapshot += bal * price;
+      }
+      snapshot = Math.round(snapshot * 100) / 100;
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (historicalData.length) {
+        const lastIdx = historicalData.length - 1;
+        if (historicalData[lastIdx].date === todayStr) {
+          historicalData[lastIdx].value = snapshot;
+        } else {
+          historicalData.push({ date: todayStr, value: snapshot });
+        }
+      } else {
+        historicalData.push({ date: todayStr, value: snapshot });
+      }
+      console.log(`Appended/updated live snapshot for ${todayStr}: $${snapshot.toFixed(2)}`);
+    } catch (e) {
+      console.log('Failed to append live snapshot:', e);
+    }
+
     return new Response(
       JSON.stringify(historicalData),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -61,7 +61,9 @@ export function PortfolioChartCard({ address }: PortfolioChartCardProps) {
   };
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    // Parse YYYY-MM-DD as a local date to avoid timezone shifting to the previous day
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, (m || 1) - 1, d || 1);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
