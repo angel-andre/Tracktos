@@ -91,7 +91,9 @@ export const TransactionAnalyticsCard = ({ analytics }: TransactionAnalyticsCard
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value: number) => [`${value} txs`, 'Count']} />
+                  <Tooltip 
+                    formatter={(value: number, name: string) => [`${value} txs`, name]}
+                  />
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-2 w-full sm:w-auto">
