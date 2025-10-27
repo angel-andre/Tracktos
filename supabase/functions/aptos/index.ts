@@ -191,17 +191,6 @@ serve(async (req) => {
         'ZUSDC': 'usd-coin'
       };
 
-      // Also create extended token symbol mapping for price lookups
-      const symbolAliases = new Map<string, string>([
-        ['ZUSDC', 'USDC'],
-        ['ZOUSDC', 'USDC'],
-        ['ZUSDT', 'USDT'],
-        ['LAPTOS', 'APT'],
-        ['STAPT', 'APT'],
-        ['STKAPT', 'APT'],
-        ['ZAPT', 'APT']
-      ]);
-
       // Try CoinGecko first for known tokens
       try {
         const idsToFetch = symbols
@@ -842,6 +831,17 @@ serve(async (req) => {
       if (s === 'APT') return 8;
       return 8;
     };
+    
+    // Symbol aliases for price lookups (wrapped/staked versions map to base tokens)
+    const symbolAliases = new Map<string, string>([
+      ['ZUSDC', 'USDC'],
+      ['ZOUSDC', 'USDC'],
+      ['ZUSDT', 'USDT'],
+      ['LAPTOS', 'APT'],
+      ['STAPT', 'APT'],
+      ['STKAPT', 'APT'],
+      ['ZAPT', 'APT']
+    ]);
     
     for (const tx of userTxs) {
       const iso = toISOFromTx(tx);
