@@ -1498,14 +1498,14 @@ serve(async (req) => {
       console.log('✓ NFT prices found:', nftPriceMap.size, 'byTokenId:', matchedByTokenId, 'byNameCollection:', matchedByNameCollection);
     }
 
-    // Targeted enrichment: compute purchase prices for the NFTs we currently show (by token_data_id)
+    // Enhanced targeted enrichment: compute purchase prices for NFTs with broader search window
     try {
       const ownedTokenIds = nfts
         .map((n) => String(n.tokenDataId || '').toLowerCase())
         .filter((s) => !!s);
 
       if (ownedTokenIds.length > 0) {
-        // 1) Get recent token activities for these token ids where this wallet is the recipient
+        // Query BOTH incoming token transfers AND all coin withdrawals in a window
         const taQuery = `
           query TokenActivities($address: String!, $ids: [String!]) {
             token_activities_v2(
@@ -1515,15 +1515,27 @@ serve(async (req) => {
             ) {
               token_data_id
               transaction_version
+              transaction_timestamp
+            }
+            coin_activities(
+              where: { owner_address: { _eq: $address }, activity_type: { _eq: "0x1::coin::WithdrawEvent" } }
+              order_by: { transaction_version: desc }
+              limit: 5000
+            ) {
+              transaction_version
+              amount
+              coin_type
+              transaction_timestamp
             }
             fungible_asset_activities(
               where: { owner_address: { _eq: $address } }
               order_by: { transaction_version: desc }
-              limit: 3000
+              limit: 5000
             ) {
               transaction_version
               amount
               asset_type
+              transaction_timestamp
             }
           }
         `;
@@ -1537,43 +1549,51 @@ serve(async (req) => {
         if (taResp.ok) {
           const taData = await taResp.json();
           if (!taData.errors) {
-            const acts: Array<{ token_data_id: string; transaction_version: number }> = taData.data?.token_activities_v2 || [];
-            const faas: Array<{ transaction_version: number; amount: string; asset_type: string }> = taData.data?.fungible_asset_activities || [];
+            const acts: Array<{ token_data_id: string; transaction_version: number; transaction_timestamp?: string }> = taData.data?.token_activities_v2 || [];
+            const coinActs: Array<{ transaction_version: number; amount: string; coin_type: string; transaction_timestamp?: string }> = taData.data?.coin_activities || [];
+            const faas: Array<{ transaction_version: number; amount: string; asset_type: string; transaction_timestamp?: string }> = taData.data?.fungible_asset_activities || [];
 
             // Earliest incoming version per token id (first acquisition)
-            const firstVersionByToken = new Map<string, number>();
+            const firstVersionByToken = new Map<string, { version: number; timestamp?: string }>();
             for (const a of acts) {
               const id = String(a.token_data_id || '').toLowerCase();
               const v = Number(a.transaction_version ?? -1);
-              if (!firstVersionByToken.has(id) || v < (firstVersionByToken.get(id) || Number.POSITIVE_INFINITY)) {
-                firstVersionByToken.set(id, v);
+              const ts = a.transaction_timestamp;
+              if (!firstVersionByToken.has(id) || v < (firstVersionByToken.get(id)?.version || Number.POSITIVE_INFINITY)) {
+                firstVersionByToken.set(id, { version: v, timestamp: ts });
               }
             }
 
-            // Build withdraw mapping per version (prefer APT; otherwise take larger amount)
-            const withdrawByVersion = new Map<number, { amt: string; asset: string }>();
-            const isApt = (asset: string) => asset.includes('0x1::aptos_coin::AptosCoin');
+            // Build comprehensive payment mapping: check same version AND ±5 versions window
+            const paymentsByVersion = new Map<number, Array<{ amt: string; asset: string }>>();
+            const isApt = (asset: string) => asset.includes('0x1::aptos_coin::AptosCoin') || asset.includes('AptosCoin');
             const isUsdc = (asset: string) => asset.toLowerCase().includes('usdc');
             const isUsdt = (asset: string) => asset.toLowerCase().includes('usdt');
 
+            // Add coin_activities (APT withdrawals)
+            for (const ca of coinActs) {
+              const v = Number(ca.transaction_version ?? -1);
+              const amt = String(ca.amount ?? '0').replace(/\D/g, '') || '0';
+              const asset = String(ca.coin_type || '');
+              if (BigInt(amt) > 0n) {
+                if (!paymentsByVersion.has(v)) paymentsByVersion.set(v, []);
+                paymentsByVersion.get(v)!.push({ amt, asset });
+              }
+            }
+
+            // Add fungible_asset_activities
             for (const fa of faas) {
               const v = Number(fa.transaction_version ?? -1);
               const amt = String(fa.amount ?? '0').replace(/\D/g, '') || '0';
               const asset = String(fa.asset_type || '');
-              const prev = withdrawByVersion.get(v);
-              if (!prev) {
-                withdrawByVersion.set(v, { amt, asset });
-              } else {
-                if (isApt(asset) && !isApt(prev.asset)) {
-                  withdrawByVersion.set(v, { amt, asset });
-                } else if ((isApt(asset) === isApt(prev.asset)) && BigInt(amt) > BigInt(prev.amt)) {
-                  withdrawByVersion.set(v, { amt, asset });
-                }
+              if (BigInt(amt) > 0n) {
+                if (!paymentsByVersion.has(v)) paymentsByVersion.set(v, []);
+                paymentsByVersion.get(v)!.push({ amt, asset });
               }
             }
 
             // Use current APT USD price for conversions
-            const aptUsd = priceMap.get('APT') || 0;
+            const aptUsd = priceMap.get('APT') || 10; // fallback to $10 if no price
             const toApt = (amtRaw: string, asset: string): string => {
               if (isApt(asset)) {
                 return formatUnits(amtRaw, 8);
@@ -1589,33 +1609,61 @@ serve(async (req) => {
                 usdPrice = priceMap.get(sym) || 0;
                 decimals = 8;
               }
-              if (!aptUsd || !usdPrice) return '0';
+              if (!usdPrice) return '0';
               const amount = Number(formatUnits(amtRaw, decimals) || '0');
               const usd = amount * usdPrice;
               const apt = usd / aptUsd;
-              return String(apt);
+              return String(apt.toFixed(8));
             };
 
-            // Map token ids to prices in APT (using first acquisition version)
-            let joined = 0;
+            // Find best payment for each NFT (prefer APT, check ±5 version window)
+            let priced = 0;
             let zeroPriced = 0;
-            for (const [id, version] of firstVersionByToken.entries()) {
-              const wd = withdrawByVersion.get(version);
-              if (wd) {
-                const priceApt = toApt(wd.amt, wd.asset);
-                if (!nftPriceMap.has(id)) {
-                  nftPriceMap.set(id, { price: priceApt, hash: String(version) });
-                  joined++;
+            for (const [id, info] of firstVersionByToken.entries()) {
+              if (nftPriceMap.has(id)) continue; // Already priced from earlier logic
+              
+              const centerVersion = info.version;
+              let bestApt = '0';
+              let foundPayment = false;
+              
+              // Search window: same version, then ±1, ±2, etc.
+              searchLoop: for (let delta = 0; delta <= 5; delta++) {
+                const versionsToCheck = delta === 0 ? [centerVersion] : [centerVersion - delta, centerVersion + delta];
+                
+                for (const v of versionsToCheck) {
+                  const payments = paymentsByVersion.get(v);
+                  if (!payments || payments.length === 0) continue;
+                  
+                  // Prefer APT, then largest payment
+                  for (const p of payments) {
+                    const apt = toApt(p.amt, p.asset);
+                    if (parseFloat(apt) <= 0) continue;
+                    
+                    if (!foundPayment) {
+                      bestApt = apt;
+                      foundPayment = true;
+                    } else if (isApt(p.asset) && parseFloat(apt) > parseFloat(bestApt)) {
+                      bestApt = apt;
+                    } else if (parseFloat(apt) > parseFloat(bestApt)) {
+                      bestApt = apt;
+                    }
+                  }
                 }
+                
+                if (foundPayment) break searchLoop; // Found payment, stop searching
+              }
+              
+              if (foundPayment && parseFloat(bestApt) > 0) {
+                nftPriceMap.set(id, { price: bestApt, hash: String(centerVersion) });
+                priced++;
+                console.log(`✓ Found price for NFT ${id.slice(0, 16)}...: ${bestApt} APT`);
               } else {
-                // No payment observed on acquisition tx -> assume free mint/airdrop
-                if (!nftPriceMap.has(id)) {
-                  nftPriceMap.set(id, { price: '0', hash: String(version) });
-                  zeroPriced++;
-                }
+                // No payment found -> free mint
+                nftPriceMap.set(id, { price: '0', hash: String(centerVersion) });
+                zeroPriced++;
               }
             }
-            console.log('✓ Targeted price enrichment:', joined, 'priced,', zeroPriced, 'assumed free mints, out of', ownedTokenIds.length, 'shown NFTs');
+            console.log(`✓ Enhanced price enrichment: ${priced} priced, ${zeroPriced} free mints, out of ${ownedTokenIds.length} NFTs`);
           } else {
             console.log('Token activities query errors:', JSON.stringify(taData.errors).slice(0, 200));
           }
@@ -1624,7 +1672,7 @@ serve(async (req) => {
         }
       }
     } catch (err) {
-      console.log('Targeted price enrichment failed:', String(err));
+      console.log('Enhanced price enrichment failed:', String(err));
     }
 
     // Match NFT prices to owned NFTs (by tokenDataId or collection+name fallback)
