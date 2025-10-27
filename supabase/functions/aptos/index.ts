@@ -17,6 +17,9 @@ interface AptosResponse {
     name: string;
     symbol: string;
     balance: string;
+    usdPrice: number;
+    usdValue: number;
+    logoUrl: string;
   }>;
   nfts: Array<{
     name: string;
@@ -33,6 +36,7 @@ interface AptosResponse {
   }>;
   totalNftCount: number;
   totalTransactionCount: number;
+  totalUsdValue: number;
 }
 
 serve(async (req) => {
@@ -138,6 +142,64 @@ serve(async (req) => {
       const i = v.length - d;
       const out = `${v.slice(0, i)}.${v.slice(i)}`;
       return out.replace(/0+$/, '').replace(/\.$/, '');
+    };
+
+    // Helper to fetch USD prices from Pyth Network
+    const fetchPythPrices = async (symbols: string[]): Promise<Map<string, number>> => {
+      const priceMap = new Map<string, number>();
+      
+      // Pyth price feed IDs for common Aptos tokens (mainnet)
+      const pythFeedIds: Record<string, string> = {
+        'APT': '0x03ae4db29ed4ae33d323568895aa00337e658e348b37509f5372ae51f0af00d5',
+        'USDC': '0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a',
+        'USDT': '0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b',
+        'WETH': '0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace',
+        'BTC': '0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43',
+        'SOL': '0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d'
+      };
+
+      try {
+        const idsToFetch = symbols
+          .map(s => pythFeedIds[s.toUpperCase()])
+          .filter(Boolean);
+
+        if (idsToFetch.length === 0) return priceMap;
+
+        // Pyth Hermes API endpoint for price feeds
+        const priceIds = idsToFetch.join('&ids[]=');
+        const pythUrl = `https://hermes.pyth.network/v2/updates/price/latest?ids[]=${priceIds}`;
+        
+        const response = await fetch(pythUrl);
+        if (!response.ok) {
+          console.log('Pyth API error:', response.status);
+          return priceMap;
+        }
+
+        const data = await response.json();
+        const parsed = data?.parsed || [];
+
+        for (const feed of parsed) {
+          const feedId = feed?.id;
+          const price = feed?.price;
+          
+          if (price && feedId) {
+            const priceValue = parseFloat(price.price) * Math.pow(10, price.expo);
+            
+            // Map feed ID back to symbol
+            for (const [symbol, id] of Object.entries(pythFeedIds)) {
+              if (id === feedId) {
+                priceMap.set(symbol, priceValue);
+                console.log(`✓ Price for ${symbol}: $${priceValue}`);
+                break;
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.log('Error fetching Pyth prices:', error);
+      }
+
+      return priceMap;
     };
 
     // Parse fungible asset balances (includes APT)
@@ -325,9 +387,53 @@ serve(async (req) => {
       }
     }
 
-    // Sort tokens by balance
-    tokens.sort((a, b) => Number(b.balance) - Number(a.balance));
-    const topTokens = tokens.slice(0, 10);
+    // Fetch USD prices for all tokens
+    console.log('Fetching USD prices from Pyth Network...');
+    const tokenSymbols = ['APT', ...tokens.map(t => t.symbol)];
+    const priceMap = await fetchPythPrices(tokenSymbols);
+    
+    // Token logo URLs (common Aptos tokens)
+    const logoUrls: Record<string, string> = {
+      'APT': 'https://raw.githubusercontent.com/aptos-labs/aptos-core/main/ecosystem/typescript/sdk/examples/typescript/public/aptos.png',
+      'USDC': 'https://cryptologos.cc/logos/usd-coin-usdc-logo.png',
+      'USDT': 'https://cryptologos.cc/logos/tether-usdt-logo.png',
+      'WETH': 'https://cryptologos.cc/logos/ethereum-eth-logo.png',
+      'BTC': 'https://cryptologos.cc/logos/bitcoin-btc-logo.png',
+      'SOL': 'https://cryptologos.cc/logos/solana-sol-logo.png'
+    };
+
+    // Enrich tokens with USD data
+    const tokensWithUsd = tokens.map(token => {
+      const usdPrice = priceMap.get(token.symbol.toUpperCase()) || 0;
+      const balance = parseFloat(token.balance) || 0;
+      const usdValue = balance * usdPrice;
+      const logoUrl = logoUrls[token.symbol.toUpperCase()] || '';
+
+      return {
+        name: token.name,
+        symbol: token.symbol,
+        balance: token.balance,
+        usdPrice,
+        usdValue,
+        logoUrl
+      };
+    });
+
+    // Sort tokens by USD value (highest first), fallback to balance
+    tokensWithUsd.sort((a, b) => {
+      if (b.usdValue !== a.usdValue) return b.usdValue - a.usdValue;
+      return Number(b.balance) - Number(a.balance);
+    });
+    
+    const topTokens = tokensWithUsd.slice(0, 10);
+    
+    // Calculate total USD value including APT balance
+    const aptPrice = priceMap.get('APT') || 0;
+    const aptUsdValue = parseFloat(aptBalance) * aptPrice;
+    const tokensUsdValue = topTokens.reduce((sum, token) => sum + token.usdValue, 0);
+    const totalUsdValue = aptUsdValue + tokensUsdValue;
+    
+    console.log(`✓ Total portfolio USD value: $${totalUsdValue.toFixed(2)}`);
 
     // Get total NFT count
     const totalNftCount = data.current_token_ownerships_v2_aggregate?.aggregate?.count || 0;
@@ -678,7 +784,8 @@ serve(async (req) => {
       nfts: sortedNfts.slice(0, 10),
       activity,
       totalNftCount,
-      totalTransactionCount
+      totalTransactionCount,
+      totalUsdValue
     };
 
     console.log('Returning:', {
