@@ -86,8 +86,6 @@ export const TransactionAnalyticsCard = ({ analytics }: TransactionAnalyticsCard
                     cx="50%"
                     cy="50%"
                     outerRadius={80}
-                    label={({ type, percentage }) => `${type} (${percentage}%)`}
-                    labelLine={false}
                   >
                     {analytics.typeBreakdown.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
