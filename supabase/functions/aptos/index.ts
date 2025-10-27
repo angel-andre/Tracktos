@@ -255,47 +255,102 @@ serve(async (req) => {
 
       console.log('Fetching 24h-ago prices for:', symbols.join(', '));
 
-      // Fetch 24h historical data from CoinGecko (with delays to avoid rate limiting)
       for (const symbol of symbols) {
-        const coinId = coinGeckoIds[symbol.toUpperCase()];
-        if (!coinId) {
-          console.log(`⚠️ No CoinGecko ID for ${symbol}, skipping historical price`);
-          continue;
+        const sym = symbol.toUpperCase();
+        const coinId = coinGeckoIds[sym];
+        let set = false;
+
+        // 1) Try CoinGecko market_chart (hourly points, first item ~24h ago)
+        if (coinId) {
+          try {
+            const url = `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=1&interval=hourly`;
+            console.log(`CG market_chart for ${sym}: ${url}`);
+            const response = await fetch(url);
+            console.log(`CG market_chart ${sym} -> ${response.status}`);
+            if (response.ok) {
+              const data: any = await response.json();
+              if (Array.isArray(data?.prices) && data.prices.length > 0) {
+                const price24hAgo = Number(data.prices[0][1]);
+                if (Number.isFinite(price24hAgo) && price24hAgo > 0) {
+                  priceMap.set(sym, price24hAgo);
+                  console.log(`✓ CG market_chart 24h-ago ${sym}: $${price24hAgo}`);
+                  set = true;
+                }
+              }
+            } else {
+              const t = await response.text().catch(() => '');
+              console.log(`CG market_chart failed for ${sym}: ${response.status} ${t.slice(0,120)}`);
+            }
+          } catch (err) {
+            console.log(`CG market_chart error for ${sym}:`, err);
+          }
         }
 
-        try {
-          const url = `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=1&interval=hourly`;
-          console.log(`Fetching 24h price for ${symbol} from ${url}`);
-          const response = await fetch(url);
-          
-          console.log(`Response for ${symbol}: ${response.status} ${response.statusText}`);
-          
-          if (response.ok) {
-            const data = await response.json();
-            console.log(`Data for ${symbol}:`, JSON.stringify(data).slice(0, 200));
-            
-            // prices is an array of [timestamp, price] pairs
-            // Get the first price (24h ago)
-            if (data.prices && Array.isArray(data.prices) && data.prices.length > 0) {
-              const price24hAgo = data.prices[0][1];
-              priceMap.set(symbol.toUpperCase(), price24hAgo);
-              console.log(`✓ 24h-ago price for ${symbol}: $${price24hAgo}`);
+        // 2) Fallback: CoinGecko coins endpoint with 24h percent to back-calc
+        if (!set && coinId) {
+          try {
+            const url = `https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`;
+            console.log(`CG coins for ${sym}: ${url}`);
+            const response = await fetch(url);
+            console.log(`CG coins ${sym} -> ${response.status}`);
+            if (response.ok) {
+              const data: any = await response.json();
+              const current = Number(data?.market_data?.current_price?.usd);
+              const pct = Number(data?.market_data?.price_change_percentage_24h);
+              if (Number.isFinite(current) && Number.isFinite(pct)) {
+                const price24hAgo = current / (1 + pct / 100);
+                if (price24hAgo > 0) {
+                  priceMap.set(sym, price24hAgo);
+                  console.log(`✓ CG coins back-calc 24h-ago ${sym}: $${price24hAgo}`);
+                  set = true;
+                }
+              }
             } else {
-              console.log(`⚠️ No price data in response for ${symbol}`);
+              const t = await response.text().catch(() => '');
+              console.log(`CG coins failed for ${sym}: ${response.status} ${t.slice(0,120)}`);
             }
-          } else {
-            const errorText = await response.text();
-            console.log(`❌ Failed to fetch 24h price for ${symbol}: ${response.status} - ${errorText.slice(0, 200)}`);
+          } catch (err) {
+            console.log(`CG coins error for ${sym}:`, err);
           }
-          
-          // Add small delay to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 100));
-        } catch (error) {
-          console.log(`❌ Error fetching 24h price for ${symbol}:`, error);
         }
+
+        // 3) Fallback: DexScreener priceChange.h24 to back-calc
+        if (!set) {
+          try {
+            const dexUrl = `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(sym + ' aptos')}`;
+            console.log(`DexScreener for ${sym}: ${dexUrl}`);
+            const response = await fetch(dexUrl);
+            console.log(`DexScreener ${sym} -> ${response.status}`);
+            if (response.ok) {
+              const data: any = await response.json();
+              const pairs: any[] = Array.isArray(data?.pairs) ? data.pairs : [];
+              const aptPair = pairs.find((p: any) => p.chainId === 'aptos' && (p.baseToken?.symbol === sym || p.quoteToken?.symbol === sym) && p.priceUsd);
+              const priceUsdRaw = aptPair?.priceUsd;
+              const h24Raw = aptPair?.priceChange?.h24;
+              if (typeof priceUsdRaw === 'number' && isFinite(priceUsdRaw) && typeof h24Raw === 'number' && isFinite(h24Raw)) {
+                const price24hAgo = priceUsdRaw / (1 + h24Raw / 100);
+                if (price24hAgo > 0) {
+                  priceMap.set(sym, price24hAgo);
+                  console.log(`✓ Dex back-calc 24h-ago ${sym}: $${price24hAgo} (from priceUsd $${priceUsdRaw}, h24 ${h24Raw}%)`);
+                  set = true;
+                }
+              } else {
+                console.log(`DexScreener missing price or h24 for ${sym}`);
+              }
+            } else {
+              const t = await response.text().catch(() => '');
+              console.log(`DexScreener failed for ${sym}: ${response.status} ${t.slice(0,120)}`);
+            }
+          } catch (err) {
+            console.log(`DexScreener error for ${sym}:`, err);
+          }
+        }
+
+        // small delay to be gentle with public APIs
+        await new Promise((r) => setTimeout(r, 120));
       }
 
-      console.log(`Successfully fetched ${priceMap.size} historical prices out of ${symbols.length} symbols`);
+      console.log(`Fetched ${priceMap.size}/${symbols.length} 24h-ago prices.`);
       return priceMap;
     };
 
