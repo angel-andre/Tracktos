@@ -1,6 +1,6 @@
 import React from "react";
 import { ImageIcon } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatNumber } from "@/lib/formatters";
@@ -231,6 +231,80 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
 export function NFTsCard({ nfts, loading, network = "mainnet" }: NFTsCardProps) {
   const [selectedCollection, setSelectedCollection] = React.useState<string>("all");
   const [sortBy, setSortBy] = React.useState<string>("default");
+  const [imagesLoading, setImagesLoading] = React.useState(true);
+  const [preloadedImages, setPreloadedImages] = React.useState<Map<string, string>>(new Map());
+
+  // Pre-load all images when NFTs data changes
+  React.useEffect(() => {
+    if (!nfts || nfts.length === 0 || loading) {
+      setImagesLoading(false);
+      return;
+    }
+
+    setImagesLoading(true);
+    const imageMap = new Map<string, string>();
+
+    const testImageLoad = (url: string): Promise<boolean> => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+        img.src = url;
+        setTimeout(() => resolve(false), 5000);
+      });
+    };
+
+    const preloadAllImages = async () => {
+      const imagePromises = nfts.map(async (nft) => {
+        const candidates = buildImageCandidates(nft.image);
+        
+        for (const candidate of candidates) {
+          try {
+            const res = await fetch(candidate, {
+              headers: { accept: 'application/json,image/*' },
+              signal: AbortSignal.timeout(5000)
+            });
+
+            if (res && res.ok) {
+              const ctype = res.headers.get('content-type') || '';
+              const isJson = candidate.endsWith('.json') || ctype.includes('application/json');
+              
+              if (isJson) {
+                const metadata = await res.json();
+                const imageUrl = metadata?.image || metadata?.image_url || metadata?.imageUrl || 
+                                metadata?.imageURI || metadata?.uri || metadata?.media ||
+                                metadata?.animation_url || metadata?.properties?.image;
+                
+                if (imageUrl) {
+                  const imgCandidates = buildImageCandidates(imageUrl);
+                  for (const imgUrl of imgCandidates) {
+                    if (await testImageLoad(imgUrl)) {
+                      imageMap.set(nft.image, imgUrl);
+                      return;
+                    }
+                  }
+                }
+              } else {
+                if (await testImageLoad(candidate)) {
+                  imageMap.set(nft.image, candidate);
+                  return;
+                }
+              }
+            }
+          } catch {
+            continue;
+          }
+        }
+        imageMap.set(nft.image, nft.image);
+      });
+
+      await Promise.all(imagePromises);
+      setPreloadedImages(imageMap);
+      setImagesLoading(false);
+    };
+
+    preloadAllImages();
+  }, [nfts, loading]);
 
   const uniqueCollections = React.useMemo(() => {
     if (!nfts) return [];
@@ -272,23 +346,19 @@ export function NFTsCard({ nfts, loading, network = "mainnet" }: NFTsCardProps) 
     return result;
   }, [nfts, selectedCollection, sortBy]);
 
-  if (loading) {
+  if (loading || imagesLoading) {
     return (
-      <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg">
+      <Card className="backdrop-blur-xl bg-card/50 border-border/50">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-foreground">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <ImageIcon className="w-5 h-5 text-primary" />
-            </div>
-            NFT Collection
-          </CardTitle>
+          <CardTitle className="text-white">NFT Collection</CardTitle>
+          <CardDescription>Your NFT holdings</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-              <div key={i} className="space-y-2">
-                <Skeleton className="aspect-square w-full rounded-lg" />
-                <Skeleton className="h-3 w-3/4" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="space-y-3">
+                <Skeleton className="h-64 w-full rounded-lg" />
+                <Skeleton className="h-4 w-3/4" />
                 <Skeleton className="h-3 w-1/2" />
               </div>
             ))}
@@ -347,12 +417,15 @@ export function NFTsCard({ nfts, loading, network = "mainnet" }: NFTsCardProps) 
                 
                 const CardContent = (
                   <>
-                    <div className="aspect-square bg-muted/30 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
+                     <div className="aspect-square bg-muted/30 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
                       {nft.image ? (
-                        <FallbackImage
-                          srcs={buildImageCandidates(nft.image)}
+                        <img
+                          src={preloadedImages.get(nft.image) || nft.image}
                           alt={`${nft.name} - ${nft.collection}`}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-cover transition-opacity duration-500"
+                          onError={(e) => {
+                            e.currentTarget.src = nft.image;
+                          }}
                         />
                       ) : (
                         <ImageIcon className="w-8 h-8 text-muted-foreground" />
