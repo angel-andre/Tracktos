@@ -1615,7 +1615,8 @@ serve(async (req) => {
         collection: nft.collection,
         image: nft.image,
         price: priceData?.price,
-        purchaseHash: priceData?.hash
+        purchaseHash: priceData?.hash,
+        tokenDataId: nft.tokenDataId,
       };
     });
     

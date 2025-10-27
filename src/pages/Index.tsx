@@ -239,7 +239,7 @@ export default function IndexPage() {
             </TabsContent>
 
             <TabsContent value="nfts" className="space-y-6">
-              <PremiumNFTsCard nfts={data?.nfts || null} loading={loading} />
+              <PremiumNFTsCard nfts={data?.nfts || null} loading={loading} network={network} />
               <NFTsCard nfts={data?.nfts || null} loading={loading} network={network} />
             </TabsContent>
 

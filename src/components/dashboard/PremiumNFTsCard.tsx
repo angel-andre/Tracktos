@@ -9,11 +9,13 @@ interface NFT {
   collection: string;
   image: string;
   price?: string;
+  tokenDataId?: string;
 }
 
 interface PremiumNFTsCardProps {
   nfts: NFT[] | null;
   loading: boolean;
+  network?: "mainnet" | "testnet";
 }
 
 const extractIpfsPath = (u: string): string | null => {
@@ -203,7 +205,7 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
   );
 };
 
-export function PremiumNFTsCard({ nfts, loading }: PremiumNFTsCardProps) {
+export function PremiumNFTsCard({ nfts, loading, network = "mainnet" }: PremiumNFTsCardProps) {
   // Show top 6 NFTs as premium (expects server to sort by price desc)
   const premiumNFTs = nfts?.slice(0, 6) || [];
 
@@ -251,41 +253,63 @@ export function PremiumNFTsCard({ nfts, loading }: PremiumNFTsCardProps) {
       <CardContent>
         {premiumNFTs.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {premiumNFTs.map((nft, idx) => (
-              <div 
-                key={idx} 
-                className="group relative border border-border/50 rounded-xl overflow-hidden bg-secondary/20 hover:bg-secondary/40 transition-all duration-300 hover:scale-105 hover:shadow-2xl"
-              >
-                <div className="aspect-square bg-muted/30 flex items-center justify-center overflow-hidden relative">
-                  {nft.image ? (
-                    <FallbackImage
-                      srcs={buildImageCandidates(nft.image)}
-                      alt={`${nft.name} - ${nft.collection}`}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                    />
-                  ) : (
-                    <ImageIcon className="w-12 h-12 text-muted-foreground" />
-                  )}
-                  <div className="absolute top-2 right-2 bg-primary/20 backdrop-blur-sm border border-primary/30 rounded-full p-1.5">
-                    <Gem className="w-3 h-3 text-primary" />
+            {premiumNFTs.map((nft, idx) => {
+              const explorerUrl = nft.tokenDataId
+                ? `https://explorer.aptoslabs.com/object/${nft.tokenDataId}?network=${network}`
+                : undefined;
+
+              const CardInner = (
+                <>
+                  <div className="aspect-square bg-muted/30 flex items-center justify-center overflow-hidden relative">
+                    {nft.image ? (
+                      <FallbackImage
+                        srcs={buildImageCandidates(nft.image)}
+                        alt={`${nft.name} - ${nft.collection}`}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      />
+                    ) : (
+                      <ImageIcon className="w-12 h-12 text-muted-foreground" />
+                    )}
+                    <div className="absolute top-2 right-2 bg-primary/20 backdrop-blur-sm border border-primary/30 rounded-full p-1.5">
+                      <Gem className="w-3 h-3 text-primary" />
+                    </div>
                   </div>
-                </div>
-                <div className="p-3 bg-gradient-to-t from-background/80 to-transparent">
-                  <p className="text-sm font-bold text-foreground truncate">{nft.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{nft.collection}</p>
-                  <div className="mt-2 pt-2 border-t border-border/30">
-                    <p className="text-xs text-muted-foreground">Purchase Price:</p>
-                    <p className="text-sm font-bold text-primary">
-                      {nft.price ? (
-                        parseFloat(nft.price.toString().split(' ')[0]) === 0 
-                          ? 'Free Mint' 
-                          : `${formatNumber(nft.price.toString().split(' ')[0], 2)} APT`
-                      ) : 'N/A'}
-                    </p>
+                  <div className="p-3 bg-gradient-to-t from-background/80 to-transparent">
+                    <p className="text-sm font-bold text-foreground truncate">{nft.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{nft.collection}</p>
+                    <div className="mt-2 pt-2 border-t border-border/30">
+                      <p className="text-xs text-muted-foreground">Purchase Price:</p>
+                      <p className="text-sm font-bold text-primary">
+                        {nft.price ? (
+                          parseFloat(nft.price.toString().split(' ')[0]) === 0
+                            ? 'Free Mint'
+                            : `${formatNumber(nft.price.toString().split(' ')[0], 2)} APT`
+                        ) : 'N/A'}
+                      </p>
+                    </div>
                   </div>
+                </>
+              );
+
+              return explorerUrl ? (
+                <a
+                  key={idx}
+                  href={explorerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group relative border border-border/50 rounded-xl overflow-hidden bg-secondary/20 hover:bg-secondary/40 transition-all duration-300 hover:scale-105 hover:shadow-2xl block cursor-pointer"
+                >
+                  {CardInner}
+                </a>
+              ) : (
+                <div
+                  key={idx}
+                  className="group relative border border-border/50 rounded-xl overflow-hidden bg-secondary/20 hover:bg-secondary/40 transition-all duration-300 hover:scale-105 hover:shadow-2xl"
+                >
+                  {CardInner}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="text-center py-12">
