@@ -130,8 +130,16 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
               metadata?.properties?.files?.[0]?.uri;
               
             if (imageUrl && !cancelled) {
-              const candidates = buildImageCandidates(imageUrl);
-              setFinalSrc(candidates[0] || imageUrl);
+              // Build all gateway candidates and replace current srcs with them
+              const newCandidates = buildImageCandidates(imageUrl);
+              if (newCandidates.length > 0) {
+                // Replace srcs array and restart from first candidate
+                srcs.splice(0, srcs.length, ...newCandidates);
+                setI(0);
+                setFinalSrc(newCandidates[0]);
+              } else {
+                setFinalSrc(imageUrl);
+              }
             } else {
               // No image found in metadata, try next candidate
               advance();

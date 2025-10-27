@@ -74,7 +74,7 @@ serve(async (req) => {
             decimals
           }
         }
-        current_token_ownerships_v2(where: {owner_address: {_eq: $address}, amount: {_gt: "0"}}, limit: 100) {
+        current_token_ownerships_v2(where: {owner_address: {_eq: $address}, amount: {_gt: "0"}}, limit: 200) {
           token_data_id
           amount
           current_token_data {
@@ -952,7 +952,7 @@ serve(async (req) => {
         percentChange24h
       },
       tokens: topTokens,
-      nfts: sortedNfts.slice(0, 10),
+      nfts: sortedNfts,
       activity,
       totalNftCount,
       totalTransactionCount,
