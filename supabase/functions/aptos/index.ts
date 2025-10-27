@@ -712,28 +712,46 @@ serve(async (req) => {
     
     console.log(`✓ Fetched ${allTransactions.length} transactions for gas calculation`);
     
-    // Calculate total gas spent from ALL transactions
-    let totalGasInOctas = BigInt(0);
-    const uniqueDates = new Set<string>();
-    
+    // Calculate total gas spent from ALL transactions (dedup + user txs only)
+    const parseBig = (v: any): bigint => {
+      try { return BigInt(typeof v === 'string' ? v : String(v)); } catch { return 0n; }
+    };
+
+    // Deduplicate by version/hash and keep only user transactions
+    const seen = new Set<string>();
+    const userTxs: any[] = [];
     for (const tx of allTransactions) {
-      if (tx.gas_used && tx.gas_unit_price) {
-        // Safely convert to BigInt with string cleanup
-        const gasUsed = BigInt(String(tx.gas_used).replace(/\D/g, '') || '0');
-        const gasPrice = BigInt(String(tx.gas_unit_price).replace(/\D/g, '') || '0');
+      const key = String(tx.version ?? tx.hash ?? '');
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      if (tx.type === 'user_transaction') userTxs.push(tx);
+    }
+
+    let totalGasInOctas = 0n;
+    const uniqueDates = new Set<string>();
+
+    for (const tx of userTxs) {
+      // Track active days using robust timestamp helper
+      const iso = toISOFromTx(tx);
+      const date = iso.split('T')[0];
+      uniqueDates.add(date);
+
+      // Sum up gas spent (gas_used * gas_unit_price)
+      if (tx.gas_used != null && tx.gas_unit_price != null) {
+        const gasUsed = parseBig(tx.gas_used);
+        const gasPrice = parseBig(tx.gas_unit_price);
         totalGasInOctas += gasUsed * gasPrice;
       }
-      
-      // Track active days
-      if (tx.timestamp) {
-        const date = new Date(parseInt(tx.timestamp) / 1000).toISOString().split('T')[0];
-        uniqueDates.add(date);
-      }
     }
-    
+
     activeDays = uniqueDates.size;
     totalGasSpent = formatUnits(String(totalGasInOctas), 8);
-    console.log(`✓ Total gas from ${allTransactions.length} transactions: ${totalGasSpent} APT, Active days: ${activeDays}`);
+
+    const fetchedPct = ((userTxs.length / Math.max(1, totalTransactionCount)) * 100).toFixed(1);
+    if (userTxs.length !== totalTransactionCount) {
+      console.log(`! Warning: fetched ${userTxs.length}/${totalTransactionCount} user txs (${fetchedPct}%). Results may be slightly undercounted.`);
+    }
+    console.log(`✓ Gas calc on ${userTxs.length} unique user txs (${allTransactions.length} raw): ${totalGasSpent} APT. Active days: ${activeDays}`);
     
     // Fetch sample transactions for detailed analysis (NFT purchases, activity parsing)
     let transactions: any[] = [];
