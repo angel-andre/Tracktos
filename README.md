@@ -3,7 +3,7 @@
 <div align="center">
   <img src="src/assets/aptos-logo.png" alt="Aptos Logo" width="100"/>
   <h3>Comprehensive Aptos Wallet Analytics Platform</h3>
-  <p>Explore your Aptos blockchain journey through detailed wallet analytics and insights</p>
+  <p>Explore your Aptos blockchain adventure through detailed wallet analytics and insights</p>
 </div>
 
 ## 🌟 Features
