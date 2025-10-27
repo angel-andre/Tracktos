@@ -1,6 +1,7 @@
 import React from "react";
 import { Gem, ImageIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface NFT {
   name: string;
@@ -117,6 +118,32 @@ export function PremiumNFTsCard({ nfts, loading }: PremiumNFTsCardProps) {
   // Show top 6 NFTs as premium (expects server to sort by price desc)
   const premiumNFTs = nfts?.slice(0, 6) || [];
 
+  if (loading) {
+    return (
+      <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Gem className="w-5 h-5 text-primary" />
+            </div>
+            Most Expensive NFTs
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="space-y-2">
+                <Skeleton className="aspect-square w-full rounded-xl" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg hover:shadow-xl transition-all duration-300">
       <CardHeader>
@@ -133,13 +160,7 @@ export function PremiumNFTsCard({ nfts, loading }: PremiumNFTsCardProps) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="aspect-square bg-muted animate-pulse rounded-xl" />
-            ))}
-          </div>
-        ) : premiumNFTs.length > 0 ? (
+        {premiumNFTs.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {premiumNFTs.map((nft, idx) => (
               <div 

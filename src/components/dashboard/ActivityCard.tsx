@@ -1,5 +1,6 @@
 import { Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Transaction {
   hash: string;
@@ -14,6 +15,28 @@ interface ActivityCardProps {
 }
 
 export function ActivityCard({ activity, loading }: ActivityCardProps) {
+  if (loading) {
+    return (
+      <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Activity className="w-5 h-5 text-primary" />
+            </div>
+            Recent Activity
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-20 w-full" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg hover:shadow-xl transition-all duration-300">
       <CardHeader>
@@ -25,13 +48,7 @@ export function ActivityCard({ activity, loading }: ActivityCardProps) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-20 bg-muted animate-pulse rounded" />
-            ))}
-          </div>
-        ) : activity && activity.length > 0 ? (
+        {activity && activity.length > 0 ? (
           <div className="space-y-2">
             {activity.map((tx, idx) => (
               <div 

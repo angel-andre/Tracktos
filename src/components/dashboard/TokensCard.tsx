@@ -1,5 +1,6 @@
 import { Coins } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Token {
   name: string;
@@ -13,6 +14,28 @@ interface TokensCardProps {
 }
 
 export function TokensCard({ tokens, loading }: TokensCardProps) {
+  if (loading) {
+    return (
+      <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Coins className="w-5 h-5 text-primary" />
+            </div>
+            Token Holdings
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg hover:shadow-xl transition-all duration-300">
       <CardHeader>
@@ -24,13 +47,7 @@ export function TokensCard({ tokens, loading }: TokensCardProps) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-16 bg-muted animate-pulse rounded" />
-            ))}
-          </div>
-        ) : tokens && tokens.length > 0 ? (
+        {tokens && tokens.length > 0 ? (
           <div className="space-y-2">
             {tokens.map((token, idx) => (
               <div 

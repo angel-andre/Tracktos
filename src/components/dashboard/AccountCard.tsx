@@ -1,6 +1,7 @@
 import { Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface AccountData {
   address: string;
@@ -60,6 +61,34 @@ export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0,
   };
   
   const sentimentLabel = getSentimentLabel(sentiment);
+
+  if (loading) {
+    return (
+      <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Wallet className="w-5 h-5 text-primary" />
+            </div>
+            Account Overview
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Skeleton className="h-20 w-full" />
+          <div className="grid grid-cols-2 gap-4">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+          <Skeleton className="h-24 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02]">
       <CardHeader>
@@ -71,12 +100,7 @@ export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0,
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {loading ? (
-          <div className="space-y-3">
-            <div className="h-4 bg-muted animate-pulse rounded" />
-            <div className="h-4 bg-muted animate-pulse rounded w-3/4" />
-          </div>
-        ) : data ? (
+        {data ? (
           <div className="space-y-4">
             <div className="p-3 rounded-lg bg-secondary/50 backdrop-blur">
               <p className="text-sm text-muted-foreground mb-1">Address</p>

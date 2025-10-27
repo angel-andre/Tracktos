@@ -1,6 +1,7 @@
 import React from "react";
 import { ImageIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface NFT {
   name: string;
@@ -114,6 +115,32 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
 };
 
 export function NFTsCard({ nfts, loading }: NFTsCardProps) {
+  if (loading) {
+    return (
+      <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <ImageIcon className="w-5 h-5 text-primary" />
+            </div>
+            NFT Collection
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+              <div key={i} className="space-y-2">
+                <Skeleton className="aspect-square w-full rounded-lg" />
+                <Skeleton className="h-3 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg hover:shadow-xl transition-all duration-300">
       <CardHeader>
@@ -125,13 +152,7 @@ export function NFTsCard({ nfts, loading }: NFTsCardProps) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="aspect-square bg-muted animate-pulse rounded-lg" />
-            ))}
-          </div>
-        ) : nfts && nfts.length > 0 ? (
+        {nfts && nfts.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {nfts.map((nft, idx) => (
               <div 
