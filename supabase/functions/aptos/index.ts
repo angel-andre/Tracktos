@@ -669,31 +669,71 @@ serve(async (req) => {
     let activeDays = 0;
     let totalGasSpent = '0';
     
-    // Fetch transactions for analysis (optimized: fewer, larger batches, parallel requests)
-    let transactions: any[] = [];
-    const batchSize = 500; // Larger batches = fewer requests
-    const maxTransactionsToFetch = Math.min(totalTransactionCount, 2000); // Reduced from 10k for speed
+    // Fetch ALL transactions for gas calculation (parallel, large batches)
+    console.log(`Fetching ALL ${totalTransactionCount} transactions for gas calculation...`);
+    const gasCalcBatchSize = 1000;
+    const gasCalcBatches = Math.ceil(totalTransactionCount / gasCalcBatchSize);
+    const gasCalcPromises = [];
     
-    console.log(`Fetching up to ${maxTransactionsToFetch} transactions for analysis...`);
-    
-    // Parallel batch fetching for speed
-    const numBatches = Math.ceil(maxTransactionsToFetch / batchSize);
-    const fetchPromises = [];
-    
-    for (let i = 0; i < numBatches; i++) {
-      const offset = i * batchSize;
-      const txUrl = `${fullnodeBase}/accounts/${address}/transactions?start=${offset}&limit=${batchSize}`;
-      fetchPromises.push(
+    for (let i = 0; i < gasCalcBatches; i++) {
+      const offset = i * gasCalcBatchSize;
+      const txUrl = `${fullnodeBase}/accounts/${address}/transactions?start=${offset}&limit=${gasCalcBatchSize}`;
+      gasCalcPromises.push(
         fetch(txUrl, { headers: { 'Accept': 'application/json' } })
           .then(r => r.ok ? r.json() : [])
           .catch(() => [])
       );
     }
     
-    const batchResults = await Promise.all(fetchPromises);
-    transactions = batchResults.flat().filter(tx => tx && typeof tx === 'object');
+    const allTransactions = (await Promise.all(gasCalcPromises)).flat().filter(tx => tx && typeof tx === 'object');
+    console.log(`✓ Fetched ${allTransactions.length} transactions for gas calculation`);
     
-    console.log(`✓ Fetched ${transactions.length} transactions for analysis`);
+    // Calculate total gas spent from ALL transactions
+    let totalGasInOctas = BigInt(0);
+    const uniqueDates = new Set<string>();
+    
+    for (const tx of allTransactions) {
+      if (tx.gas_used && tx.gas_unit_price) {
+        const gasUsed = BigInt(tx.gas_used);
+        const gasPrice = BigInt(tx.gas_unit_price);
+        totalGasInOctas += gasUsed * gasPrice;
+      }
+      
+      // Track active days
+      if (tx.timestamp) {
+        const date = new Date(parseInt(tx.timestamp) / 1000).toISOString().split('T')[0];
+        uniqueDates.add(date);
+      }
+    }
+    
+    activeDays = uniqueDates.size;
+    totalGasSpent = formatUnits(String(totalGasInOctas), 8);
+    console.log(`✓ Total gas from ALL transactions: ${totalGasSpent} APT, Active days: ${activeDays}`);
+    
+    // Fetch sample transactions for detailed analysis (NFT purchases, activity parsing)
+    let transactions: any[] = [];
+    const analysisBatchSize = 500;
+    const maxAnalysisTransactions = Math.min(totalTransactionCount, 2000);
+    
+    console.log(`Fetching ${maxAnalysisTransactions} transactions for detailed analysis...`);
+    
+    const analysisNumBatches = Math.ceil(maxAnalysisTransactions / analysisBatchSize);
+    const analysisFetchPromises = [];
+    
+    for (let i = 0; i < analysisNumBatches; i++) {
+      const offset = i * analysisBatchSize;
+      const txUrl = `${fullnodeBase}/accounts/${address}/transactions?start=${offset}&limit=${analysisBatchSize}`;
+      analysisFetchPromises.push(
+        fetch(txUrl, { headers: { 'Accept': 'application/json' } })
+          .then(r => r.ok ? r.json() : [])
+          .catch(() => [])
+      );
+    }
+    
+    const analysisResults = await Promise.all(analysisFetchPromises);
+    transactions = analysisResults.flat().filter(tx => tx && typeof tx === 'object');
+    
+    console.log(`✓ Fetched ${transactions.length} transactions for detailed analysis`);
     
     let activity: Array<{ hash: string; type: string; success: boolean; timestamp: string }> = [];
     
@@ -809,27 +849,6 @@ serve(async (req) => {
         timestamp: toISOFromTx(tx)
       }));
 
-      // Calculate wallet identity metrics (active days and total gas spent)
-      const uniqueDates = new Set<string>();
-      let totalGasInOctas = 0n;
-
-      for (const tx of transactions) {
-        // Track unique dates for active days
-        const timestamp = toISOFromTx(tx);
-        const date = timestamp.split('T')[0]; // Get YYYY-MM-DD
-        uniqueDates.add(date);
-
-        // Sum up gas spent (gas_used * gas_unit_price)
-        if (tx.gas_used && tx.gas_unit_price) {
-          const gasUsed = BigInt(String(tx.gas_used).replace(/\D/g, '') || '0');
-          const gasPrice = BigInt(String(tx.gas_unit_price).replace(/\D/g, '') || '0');
-          totalGasInOctas += gasUsed * gasPrice;
-        }
-      }
-
-      activeDays = uniqueDates.size;
-      totalGasSpent = formatUnits(String(totalGasInOctas), 8);
-      
       // Compute accurate first/last transaction timestamps via dedicated queries
       try {
         const oldestResp = await fetch(`${fullnodeBase}/accounts/${address}/transactions?start=0&limit=1`, {
@@ -885,8 +904,6 @@ serve(async (req) => {
       console.log('✓ Recent transactions fetched:', activity.length);
       console.log('✓ NFT prices found:', nftPriceMap.size, 'byTokenId:', matchedByTokenId, 'byNameCollection:', matchedByNameCollection);
     }
-    
-    console.log(`✓ Active days: ${activeDays}, Total gas: ${totalGasSpent} APT from ${transactions.length} transactions analyzed`);
 
     // Targeted enrichment: compute purchase prices for the NFTs we currently show (by token_data_id)
     try {
