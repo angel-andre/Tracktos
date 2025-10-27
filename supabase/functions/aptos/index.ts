@@ -159,9 +159,25 @@ serve(async (req) => {
       }
     }
 
-    // Finalize APT liquid balance
-    aptBalance = formatUnits(String(aptRaw), 8);
-    console.log('✓ APT balance (aggregated FA):', aptBalance);
+    // Finalize APT liquid balance - prefer coin standard over FA aggregation
+    let aptCoinRaw = 0n;
+    if (data.current_coin_balances) {
+      for (const cb of data.current_coin_balances) {
+        const t = cb.coin_type || '';
+        if (t.includes('0x1::aptos_coin::AptosCoin')) {
+          const rd = String(cb.amount ?? '0').replace(/\D/g, '');
+          if (rd) aptCoinRaw += BigInt(rd);
+        }
+      }
+    }
+
+    if (aptCoinRaw > 0n) {
+      aptBalance = formatUnits(String(aptCoinRaw), 8);
+      console.log('✓ APT balance (coin):', aptBalance);
+    } else {
+      aptBalance = formatUnits(String(aptRaw), 8);
+      console.log('✓ APT balance (aggregated FA fallback):', aptBalance);
+    }
 
     // Parse staked APT
     let stakedApt = '0';
@@ -181,6 +197,23 @@ serve(async (req) => {
       if (!u) return u;
       if (u.startsWith('ipfs://ipfs/')) return `https://ipfs.io/${u.slice('ipfs://'.length)}`;
       if (u.startsWith('ipfs://')) return `https://ipfs.io/ipfs/${u.slice('ipfs://'.length)}`;
+      return u;
+    };
+
+    const normalizeGateway = (u: string) => {
+      if (!u) return u;
+      try {
+        const url = new URL(u);
+        const lowerPath = url.pathname.toLowerCase();
+        const idx = lowerPath.indexOf('/ipfs/');
+        if (idx !== -1) {
+          const ipfsPath = url.pathname.slice(idx + '/ipfs/'.length);
+          return `https://nftstorage.link/ipfs/${ipfsPath}`;
+        }
+      } catch (_) {
+        const m = u.match(/ipfs\/(.+)$/i);
+        if (m) return `https://nftstorage.link/ipfs/${m[1]}`;
+      }
       return u;
     };
 
@@ -214,6 +247,7 @@ serve(async (req) => {
           }
 
           image = resolveIpfs(image);
+          image = normalizeGateway(image);
 
           nfts.push({ name, collection, image });
           console.log('✓ NFT:', name, 'img:', image?.slice(0, 100));
