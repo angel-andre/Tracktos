@@ -493,8 +493,40 @@ serve(async (req) => {
         timestamp: toISOFromTx(tx)
       }));
       
-      // Extract first and last transaction timestamps
-      if (transactions.length > 0) {
+      // Compute accurate first/last transaction timestamps via dedicated queries
+      try {
+        const oldestResp = await fetch(`${fullnodeBase}/accounts/${address}/transactions?start=0&limit=1`, {
+          headers: { 'Accept': 'application/json' }
+        });
+        if (oldestResp.ok) {
+          const arr = await oldestResp.json();
+          if (Array.isArray(arr) && arr.length > 0) {
+            firstTransactionTimestamp = toISOFromTx(arr[0]);
+          }
+        }
+      } catch (_) {
+        console.log('Oldest tx fetch failed');
+      }
+
+      try {
+        if (totalTransactionCount > 0) {
+          const startSeq = Math.max(0, totalTransactionCount - 1);
+          const latestResp = await fetch(`${fullnodeBase}/accounts/${address}/transactions?start=${startSeq}&limit=1`, {
+            headers: { 'Accept': 'application/json' }
+          });
+          if (latestResp.ok) {
+            const arr = await latestResp.json();
+            if (Array.isArray(arr) && arr.length > 0) {
+              lastTransactionTimestamp = toISOFromTx(arr[0]);
+            }
+          }
+        }
+      } catch (_) {
+        console.log('Latest tx fetch failed');
+      }
+
+      // Fallback to min/max from recent window if dedicated lookups failed
+      if ((!firstTransactionTimestamp || !lastTransactionTimestamp) && transactions.length > 0) {
         let minT = Number.POSITIVE_INFINITY;
         let maxT = Number.NEGATIVE_INFINITY;
         for (const tx of transactions) {
@@ -503,11 +535,11 @@ serve(async (req) => {
           if (!isNaN(t)) {
             if (t < minT) {
               minT = t;
-              firstTransactionTimestamp = new Date(t).toISOString();
+              firstTransactionTimestamp ||= new Date(t).toISOString();
             }
             if (t > maxT) {
               maxT = t;
-              lastTransactionTimestamp = new Date(t).toISOString();
+              lastTransactionTimestamp ||= new Date(t).toISOString();
             }
           }
         }
