@@ -92,31 +92,79 @@ serve(async (req) => {
       return parseFloat(v) / divisor;
     };
 
-    // Helper: map asset type/symbol to pricing source
-    const getCoinGeckoId = (symbol: string, assetType: string): string | null => {
-      // Only map canonical APT on Aptos
+    // Helper: identify APT and parse Aptos contract address from asset type
+    const getCoinGeckoIdIfApt = (symbol: string, assetType: string): string | null => {
       if (assetType === '0x1::aptos_coin::AptosCoin' || symbol === 'APT') return 'aptos';
-      return null; // all other non-stables are ignored to avoid mispricing by symbol
+      return null;
     };
-
+    const getAptosContractAddress = (assetType: string): string | null => {
+      const addr = String(assetType || '').split('::')[0];
+      return addr ? addr.toLowerCase() : null;
+    };
     const isStableUsd = (symbol: string): boolean => symbol === 'USDC' || symbol === 'USDT';
 
     // Process current balances
     const rawTokenBalances: Array<{ symbol: string; balance: number; assetType: string; coinGeckoId: string } > = [];
     const balances = graphqlData.data?.current_fungible_asset_balances || [];
     const decimalsByAsset = new Map<string, number>();
-    
+
+    // First pass: collect decimals and candidate Aptos contract addresses we need to map
+    const candidates: Array<{ symbol: string; assetType: string; balance: number }> = [];
+    for (const item of balances) {
+      const symbol = item.metadata?.symbol?.toUpperCase() || '';
+      const decimals = item.metadata?.decimals ?? 8;
+      const assetType = String(item.asset_type || '');
+      const balance = formatUnits(item.amount, decimals);
+      decimalsByAsset.set(assetType, decimals);
+      if (balance > 0) {
+        const isApt = !!getCoinGeckoIdIfApt(symbol, assetType);
+        const stable = isStableUsd(symbol);
+        if (!isApt && !stable) {
+          candidates.push({ symbol, assetType, balance });
+        }
+      }
+    }
+
+    // Build Aptos platform contract -> CoinGecko id map
+    let aptosPlatformMap = new Map<string, string>();
+    if (candidates.length > 0) {
+      try {
+        const listUrl = 'https://api.coingecko.com/api/v3/coins/list?include_platform=true';
+        const listResp = await fetch(listUrl);
+        if (listResp.ok) {
+          const listData: Array<{ id: string; platforms?: Record<string, string> }> = await listResp.json();
+          const map = new Map<string, string>();
+          for (const c of listData) {
+            const addr = c.platforms?.aptos;
+            if (addr) map.set(addr.toLowerCase(), c.id);
+          }
+          aptosPlatformMap = map;
+        } else {
+          console.log('CoinGecko list fetch failed:', listResp.status);
+        }
+      } catch (e) {
+        console.log('CoinGecko list fetch error:', e);
+      }
+    }
+
+    // Second pass: create priced token list (APT, stables at $1, and mapped Aptos tokens via CoinGecko)
     for (const item of balances) {
       const symbol = item.metadata?.symbol?.toUpperCase() || '';
       const decimals = item.metadata?.decimals ?? 8;
       const balance = formatUnits(item.amount, decimals);
       const assetType = item.asset_type as string;
-      decimalsByAsset.set(assetType, decimals);
-      
+      if (balance <= 0) continue;
+
       // Prefer exact APT mapping; treat known stables as $1 without CoinGecko
-      const cgId = getCoinGeckoId(symbol, assetType) || (isStableUsd(symbol) ? 'STABLE_USD' : null);
-      
-      if (balance > 0 && cgId) {
+      let cgId: string | null = getCoinGeckoIdIfApt(symbol, assetType) || (isStableUsd(symbol) ? 'STABLE_USD' : null);
+
+      // If not APT/stable, try to map by Aptos contract address via CoinGecko platforms
+      if (!cgId) {
+        const addr = getAptosContractAddress(assetType);
+        if (addr) cgId = aptosPlatformMap.get(addr) || null;
+      }
+
+      if (cgId) {
         rawTokenBalances.push({ symbol, balance, assetType, coinGeckoId: cgId });
       }
     }
