@@ -355,6 +355,26 @@ serve(async (req) => {
 
     // Parse NFT purchase prices from transaction history
     console.log('Parsing NFT purchase prices...');
+
+    // Helper to normalize various timestamp formats to ISO string
+    const toISOFromTx = (tx: any): string => {
+      const raw: any = tx?.timestamp_us ?? tx?.timestamp ?? tx?.time_microseconds ?? tx?.time ?? null;
+      if (typeof raw === 'string' && raw.includes('T')) return raw; // already ISO
+      const num = typeof raw === 'string' ? parseInt(raw, 10) : (typeof raw === 'number' ? raw : NaN);
+      if (!isNaN(num)) {
+        if (num > 1e14) { // microseconds
+          return new Date(Math.floor(num / 1000)).toISOString();
+        }
+        if (num > 1e12) { // milliseconds
+          return new Date(num).toISOString();
+        }
+        if (num > 1e9) { // seconds
+          return new Date(num * 1000).toISOString();
+        }
+      }
+      return new Date().toISOString();
+    };
+
     const nftPriceMap = new Map<string, { price: string; hash: string }>();
     let matchedByTokenId = 0;
     let matchedByNameCollection = 0;
@@ -470,13 +490,27 @@ serve(async (req) => {
         hash: tx.hash || 'unknown',
         type: tx.type || 'unknown',
         success: tx.success !== false,
-        timestamp: tx.timestamp || new Date().toISOString()
+        timestamp: toISOFromTx(tx)
       }));
       
       // Extract first and last transaction timestamps
       if (transactions.length > 0) {
-        lastTransactionTimestamp = transactions[0]?.timestamp || '';
-        firstTransactionTimestamp = transactions[transactions.length - 1]?.timestamp || '';
+        let minT = Number.POSITIVE_INFINITY;
+        let maxT = Number.NEGATIVE_INFINITY;
+        for (const tx of transactions) {
+          const iso = toISOFromTx(tx);
+          const t = Date.parse(iso);
+          if (!isNaN(t)) {
+            if (t < minT) {
+              minT = t;
+              firstTransactionTimestamp = new Date(t).toISOString();
+            }
+            if (t > maxT) {
+              maxT = t;
+              lastTransactionTimestamp = new Date(t).toISOString();
+            }
+          }
+        }
       }
       
       console.log('✓ Recent transactions fetched:', activity.length);
