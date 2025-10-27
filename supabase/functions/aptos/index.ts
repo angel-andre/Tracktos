@@ -820,6 +820,14 @@ serve(async (req) => {
     const protocolVolumes = new Map<string, { protocol: string; type: string; volumeUsd: number; txCount: number }>();
     const stakingActivities: Array<{ protocol: string; action: string; amount: string; timestamp: string }> = [];
     
+    // Known decimals for common tokens (fallback defaults to 8)
+    const getDecimals = (sym: string): number => {
+      const s = (sym || '').toUpperCase();
+      if (s === 'USDC' || s === 'USDT' || s === 'ZUSDC') return 6;
+      if (s === 'APT') return 8;
+      return 8;
+    };
+    
     for (const tx of userTxs) {
       const iso = toISOFromTx(tx);
       const date = iso.split('T')[0];
@@ -838,7 +846,8 @@ serve(async (req) => {
       // Categorize transaction type
       let txType = 'Other';
       let isDexSwap = false;
-      let isStakingActivity = false;
+      let isStaking = false;
+      let capturedSwap = false;
       
       if (tx.payload?.type === 'entry_function_payload' && tx.payload.function) {
         const func = tx.payload.function.toLowerCase();
@@ -871,15 +880,15 @@ serve(async (req) => {
         } else if (contractAddr.includes('tortuga') || module.includes('tortuga')) {
           contractName = 'Tortuga';
           contractType = 'Staking';
-          isStakingActivity = true;
+          isStaking = true;
         } else if (contractAddr.includes('ditto') || module.includes('ditto')) {
           contractName = 'Ditto';
           contractType = 'Staking';
-          isStakingActivity = true;
+          isStaking = true;
         } else if (contractAddr === '0x1' && module === 'staking_contract') {
           contractName = 'Aptos Staking';
           contractType = 'Staking';
-          isStakingActivity = true;
+          isStaking = true;
         } else if (module.includes('router') || module.includes('swap')) {
           contractName = module.charAt(0).toUpperCase() + module.slice(1);
           contractType = 'DEX';
@@ -887,7 +896,7 @@ serve(async (req) => {
         } else if (module.includes('stake')) {
           contractName = 'Staking Protocol';
           contractType = 'Staking';
-          isStakingActivity = true;
+          isStaking = true;
         } else if (module.includes('coin')) {
           contractName = 'Coin Operations';
           contractType = 'Transfer';
@@ -907,10 +916,10 @@ serve(async (req) => {
           txType = 'NFT Mint';
         } else if (func.includes('stake') && !func.includes('unstake')) {
           txType = 'Staking';
-          isStakingActivity = true;
+          isStaking = true;
         } else if (func.includes('unstake') || func.includes('withdraw_stake')) {
           txType = 'Unstaking';
-          isStakingActivity = true;
+          isStaking = true;
         } else if (func.includes('claim')) {
           txType = 'Claim';
         }
@@ -1013,7 +1022,7 @@ serve(async (req) => {
         }
         
         // Track staking/unstaking activities
-        if (tx.success && (isStakingActivity || txType === 'Staking' || txType === 'Unstaking')) {
+        if (tx.success && (isStaking || txType === 'Staking' || txType === 'Unstaking')) {
           const events = tx.events || [];
           let amount = '0';
           
