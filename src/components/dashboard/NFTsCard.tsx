@@ -346,7 +346,7 @@ export function NFTsCard({ nfts, loading, network = "mainnet" }: NFTsCardProps) 
     return result;
   }, [nfts, selectedCollection, sortBy]);
 
-  if (loading || imagesLoading) {
+  if (loading) {
     return (
       <Card className="backdrop-blur-xl bg-card/50 border-border/50">
         <CardHeader>
@@ -419,13 +419,10 @@ export function NFTsCard({ nfts, loading, network = "mainnet" }: NFTsCardProps) 
                   <>
                      <div className="aspect-square bg-muted/30 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
                       {nft.image ? (
-                        <img
-                          src={preloadedImages.get(nft.image) || nft.image}
+                        <FallbackImage
+                          srcs={buildImageCandidates(preloadedImages.get(nft.image) || nft.image)}
                           alt={`${nft.name} - ${nft.collection}`}
-                          className="w-full h-full object-cover transition-opacity duration-500"
-                          onError={(e) => {
-                            e.currentTarget.src = nft.image;
-                          }}
+                          className="w-full h-full object-cover"
                         />
                       ) : (
                         <ImageIcon className="w-8 h-8 text-muted-foreground" />
