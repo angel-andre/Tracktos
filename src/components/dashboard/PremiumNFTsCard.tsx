@@ -277,20 +277,6 @@ export function PremiumNFTsCard({ nfts, loading, network = "mainnet" }: PremiumN
                   <div className="p-3 bg-gradient-to-t from-background/80 to-transparent">
                     <p className="text-sm font-bold text-foreground truncate">{nft.name}</p>
                     <p className="text-xs text-muted-foreground truncate">{nft.collection}</p>
-                    <div className="mt-2 pt-2 border-t border-border/30">
-                      <p className="text-xs text-muted-foreground">
-                        {nft.price && parseFloat(nft.price.toString().split(' ')[0]) > 0 
-                          ? 'Value:' 
-                          : 'Est. Value:'}
-                      </p>
-                      <p className="text-sm font-bold text-primary">
-                        {nft.price ? (
-                          parseFloat(nft.price.toString().split(' ')[0]) === 0
-                            ? 'Free Mint'
-                            : `${formatNumber(nft.price.toString().split(' ')[0], 2)} APT`
-                        ) : 'N/A'}
-                      </p>
-                    </div>
                   </div>
                 </>
               );
