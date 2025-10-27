@@ -334,9 +334,12 @@ export function NFTsCard({ nfts, loading }: NFTsCardProps) {
                 </div>
                 <p className="text-xs font-semibold text-foreground truncate">{nft.name}</p>
                 <p className="text-xs text-muted-foreground truncate">{nft.collection}</p>
-                {nft.price && (
-                  <p className="text-xs text-primary font-semibold mt-1">{formatNumber(nft.price, 2)}</p>
-                )}
+                <div className="mt-2 pt-2 border-t border-border/30">
+                  <p className="text-xs text-muted-foreground">Purchase Price:</p>
+                  <p className="text-sm font-bold text-primary">
+                    {nft.price ? formatNumber(nft.price, 2) : 'N/A'}
+                  </p>
+                </div>
               </div>
               ))}
             </div>
