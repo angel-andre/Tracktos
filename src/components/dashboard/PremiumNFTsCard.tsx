@@ -92,44 +92,61 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
         const shouldAssumeJson = src.endsWith('.json');
         let res: Response | null = null;
         try {
-          res = await fetch(src, { headers: { accept: 'application/json,image/*' } });
+          res = await fetch(src, { 
+            headers: { accept: 'application/json,image/*' },
+            signal: AbortSignal.timeout(5000)
+          });
         } catch {
-          // If CORS blocks us, let the <img> try directly
-          if (!shouldAssumeJson) {
-            if (!cancelled) setFinalSrc(src);
-            return;
-          }
+          // If CORS or timeout, try the URL directly as an image
+          if (!cancelled) setFinalSrc(src);
+          return;
         }
 
-        if (res) {
+        if (res && res.ok) {
           const ctype = res.headers.get('content-type') || '';
-          const isJson = shouldAssumeJson || ctype.includes('application/json');
+          const isJson = shouldAssumeJson || ctype.includes('application/json') || ctype.includes('text/plain');
+          
           if (isJson) {
             let metadata: any = null;
             try {
-              metadata = await res.json();
+              const text = await res.text();
+              metadata = JSON.parse(text);
             } catch {
-              try {
-                const text = await res.text();
-                metadata = JSON.parse(text);
-              } catch {
-                advance();
-                return;
-              }
+              // If JSON parsing fails, try the URL as an image
+              if (!cancelled) setFinalSrc(src);
+              return;
             }
-            const imageUrl: string | undefined = metadata?.image || metadata?.image_url || metadata?.imageUrl || metadata?.imageURI || metadata?.uri || metadata?.media;
+            
+            // Try multiple possible image field names
+            const imageUrl: string | undefined = 
+              metadata?.image || 
+              metadata?.image_url || 
+              metadata?.imageUrl || 
+              metadata?.imageURI || 
+              metadata?.uri || 
+              metadata?.media ||
+              metadata?.animation_url ||
+              metadata?.properties?.image ||
+              metadata?.properties?.files?.[0]?.uri;
+              
             if (imageUrl && !cancelled) {
               const candidates = buildImageCandidates(imageUrl);
               setFinalSrc(candidates[0] || imageUrl);
             } else {
+              // No image found in metadata, try next candidate
               advance();
             }
           } else {
+            // Not JSON, use as image directly
             if (!cancelled) setFinalSrc(src);
           }
+        } else {
+          // Response not OK, try next candidate
+          advance();
         }
       } catch {
-        advance();
+        // Any error, try the URL directly
+        if (!cancelled) setFinalSrc(src);
       }
     };
 
@@ -137,9 +154,9 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
 
     const timer = setTimeout(() => {
       if (!loadedRef.current && !cancelled) {
-        setI((prev) => (prev + 1 < srcs.length ? prev + 1 : prev));
+        advance();
       }
-    }, 8000);
+    }, 10000);
 
     return () => {
       cancelled = true;
