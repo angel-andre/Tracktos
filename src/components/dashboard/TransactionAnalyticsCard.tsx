@@ -13,7 +13,16 @@ interface TransactionAnalyticsCardProps {
   analytics: TransactionAnalytics;
 }
 
-const COLORS = ['hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--accent))', 'hsl(var(--muted))', 'hsl(var(--chart-1))', 'hsl(var(--chart-2))'];
+const COLORS = [
+  'hsl(142 76% 36%)',    // Primary green
+  'hsl(173 58% 39%)',    // Teal
+  'hsl(43 74% 66%)',     // Yellow
+  'hsl(27 87% 67%)',     // Orange
+  'hsl(197 37% 24%)',    // Deep blue
+  'hsl(280 60% 50%)',    // Purple
+  'hsl(340 75% 55%)',    // Pink
+  'hsl(160 50% 45%)',    // Mint
+];
 
 export const TransactionAnalyticsCard = ({ analytics }: TransactionAnalyticsCardProps) => {
   // Get last 90 days for heatmap

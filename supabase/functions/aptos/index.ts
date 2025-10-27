@@ -676,17 +676,23 @@ serve(async (req) => {
     let totalGasSpent = '0';
     
     // Fetch ALL transactions for gas calculation (parallel, large batches)
-    console.log(`Fetching ALL ${totalTransactionCount} transactions for gas calculation...`);
-    const gasCalcBatchSize = 500; // Reduced batch size for reliability
+    console.log(`Fetching ALL ${totalTransactionCount} transactions for gas and analytics...`);
+    const gasCalcBatchSize = 500;
     const gasCalcBatches = Math.ceil(totalTransactionCount / gasCalcBatchSize);
     
     console.log(`Will fetch ${gasCalcBatches} batches of ${gasCalcBatchSize} transactions each`);
     
     // Fetch in smaller parallel chunks to avoid overwhelming the API
     let allTransactions: any[] = [];
-    const parallelChunkSize = 5; // Process 5 batches at a time
+    const parallelChunkSize = 5;
     
-    for (let chunkStart = 0; chunkStart < gasCalcBatches; chunkStart += parallelChunkSize) {
+    // To ensure we get recent transactions for analytics, fetch from both ends
+    // First: fetch recent transactions (from the end)
+    const recentBatchCount = Math.min(10, gasCalcBatches); // Last 5000 txs
+    const recentStartBatch = Math.max(0, gasCalcBatches - recentBatchCount);
+    
+    console.log(`Fetching recent transactions from batch ${recentStartBatch} to ${gasCalcBatches}...`);
+    for (let chunkStart = recentStartBatch; chunkStart < gasCalcBatches; chunkStart += parallelChunkSize) {
       const chunkEnd = Math.min(chunkStart + parallelChunkSize, gasCalcBatches);
       const chunkPromises = [];
       
@@ -697,13 +703,13 @@ serve(async (req) => {
           fetch(txUrl, { headers: { 'Accept': 'application/json' } })
             .then(r => {
               if (!r.ok) {
-                console.log(`Batch ${i} failed with status ${r.status}`);
+                console.log(`Recent batch ${i} failed with status ${r.status}`);
                 return [];
               }
               return r.json();
             })
             .catch(err => {
-              console.log(`Batch ${i} error:`, err.message);
+              console.log(`Recent batch ${i} error:`, err.message);
               return [];
             })
         );
@@ -713,10 +719,44 @@ serve(async (req) => {
       const chunkTransactions = chunkResults.flat().filter(tx => tx && typeof tx === 'object');
       allTransactions.push(...chunkTransactions);
       
-      console.log(`Fetched chunk ${chunkStart}-${chunkEnd}: ${chunkTransactions.length} transactions (total so far: ${allTransactions.length})`);
+      console.log(`Fetched recent chunk ${chunkStart}-${chunkEnd}: ${chunkTransactions.length} transactions`);
     }
     
-    console.log(`✓ Fetched ${allTransactions.length} transactions for gas calculation`);
+    // Then: fetch older transactions (from the beginning) if we haven't covered them
+    if (recentStartBatch > 0) {
+      console.log(`Fetching older transactions from batch 0 to ${recentStartBatch}...`);
+      for (let chunkStart = 0; chunkStart < recentStartBatch; chunkStart += parallelChunkSize) {
+        const chunkEnd = Math.min(chunkStart + parallelChunkSize, recentStartBatch);
+        const chunkPromises = [];
+        
+        for (let i = chunkStart; i < chunkEnd; i++) {
+          const offset = i * gasCalcBatchSize;
+          const txUrl = `${fullnodeBase}/accounts/${address}/transactions?start=${offset}&limit=${gasCalcBatchSize}`;
+          chunkPromises.push(
+            fetch(txUrl, { headers: { 'Accept': 'application/json' } })
+              .then(r => {
+                if (!r.ok) {
+                  console.log(`Old batch ${i} failed with status ${r.status}`);
+                  return [];
+                }
+                return r.json();
+              })
+              .catch(err => {
+                console.log(`Old batch ${i} error:`, err.message);
+                return [];
+              })
+          );
+        }
+        
+        const chunkResults = await Promise.all(chunkPromises);
+        const chunkTransactions = chunkResults.flat().filter(tx => tx && typeof tx === 'object');
+        allTransactions.push(...chunkTransactions);
+        
+        console.log(`Fetched old chunk ${chunkStart}-${chunkEnd}: ${chunkTransactions.length} transactions`);
+      }
+    }
+    
+    console.log(`✓ Fetched ${allTransactions.length} total transactions (${totalTransactionCount} in account)`);
     
     // Calculate total gas spent from ALL transactions (dedup + user txs only)
     const parseBig = (v: any): bigint => {
