@@ -253,30 +253,49 @@ serve(async (req) => {
         'WBTC': 'wrapped-bitcoin'
       };
 
-      // Fetch 24h historical data from CoinGecko
+      console.log('Fetching 24h-ago prices for:', symbols.join(', '));
+
+      // Fetch 24h historical data from CoinGecko (with delays to avoid rate limiting)
       for (const symbol of symbols) {
         const coinId = coinGeckoIds[symbol.toUpperCase()];
-        if (!coinId) continue;
+        if (!coinId) {
+          console.log(`⚠️ No CoinGecko ID for ${symbol}, skipping historical price`);
+          continue;
+        }
 
         try {
           const url = `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=1&interval=hourly`;
+          console.log(`Fetching 24h price for ${symbol} from ${url}`);
           const response = await fetch(url);
+          
+          console.log(`Response for ${symbol}: ${response.status} ${response.statusText}`);
           
           if (response.ok) {
             const data = await response.json();
+            console.log(`Data for ${symbol}:`, JSON.stringify(data).slice(0, 200));
+            
             // prices is an array of [timestamp, price] pairs
             // Get the first price (24h ago)
-            if (data.prices && data.prices.length > 0) {
+            if (data.prices && Array.isArray(data.prices) && data.prices.length > 0) {
               const price24hAgo = data.prices[0][1];
               priceMap.set(symbol.toUpperCase(), price24hAgo);
               console.log(`✓ 24h-ago price for ${symbol}: $${price24hAgo}`);
+            } else {
+              console.log(`⚠️ No price data in response for ${symbol}`);
             }
+          } else {
+            const errorText = await response.text();
+            console.log(`❌ Failed to fetch 24h price for ${symbol}: ${response.status} - ${errorText.slice(0, 200)}`);
           }
+          
+          // Add small delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 100));
         } catch (error) {
-          console.log(`Error fetching 24h price for ${symbol}:`, error);
+          console.log(`❌ Error fetching 24h price for ${symbol}:`, error);
         }
       }
 
+      console.log(`Successfully fetched ${priceMap.size} historical prices out of ${symbols.length} symbols`);
       return priceMap;
     };
 
