@@ -157,7 +157,13 @@ export default function IndexPage() {
         {/* Dashboard Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-6">
-            <AccountCard data={data?.account || null} loading={loading} />
+            <AccountCard 
+              data={data?.account || null} 
+              loading={loading}
+              transactionCount={data?.activity?.length || 0}
+              nftCount={data?.nfts?.length || 0}
+              tokenCount={data?.tokens?.length || 0}
+            />
             <TokensCard tokens={data?.tokens || null} loading={loading} />
           </div>
           
