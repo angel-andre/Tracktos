@@ -7,6 +7,7 @@ import { AccountCard } from "@/components/dashboard/AccountCard";
 import { TokensCard } from "@/components/dashboard/TokensCard";
 import { ActivityCard } from "@/components/dashboard/ActivityCard";
 import { NFTsCard } from "@/components/dashboard/NFTsCard";
+import aptosLogo from "@/assets/aptos-logo.png";
 
 interface AccountData {
   address: string;
@@ -95,13 +96,14 @@ export default function IndexPage() {
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
         <div className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <Sparkles className="w-8 h-8 text-primary" />
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              Aptos Journey
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <img src={aptosLogo} alt="Aptos Logo" className="w-10 h-10" />
+            <h1 className="text-4xl font-bold text-white">
+              Tracktos
             </h1>
+            <Sparkles className="w-6 h-6 text-primary" />
           </div>
-          <p className="text-muted-foreground">Explore wallet analytics and insights</p>
+          <p className="text-muted-foreground">explore your Aptos Journey through wallet analytics and insights</p>
         </div>
 
         {/* Control Panel */}
