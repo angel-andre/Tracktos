@@ -254,6 +254,55 @@ serve(async (req) => {
       priceMaps.map((p) => [p.id, p.prices])
     );
 
+    // Build base fallback prices for tokens lacking historical series
+    const baseNowPrices = new Map<string, number>();
+    baseNowPrices.set('STABLE_USD', 1);
+
+    // Map token id -> symbol for DexScreener queries
+    const symbolById = new Map<string, string>();
+    for (const t of uniqueTokenBalances) {
+      symbolById.set(t.coinGeckoId, t.symbol);
+    }
+
+    // Determine which ids have no historical price data
+    const idsNeedingBase = Array.from(priceLookup.keys()).filter((id) => {
+      const m = priceLookup.get(id) || {};
+      return Object.keys(m).length === 0 && id !== 'STABLE_USD';
+    });
+
+    if (idsNeedingBase.length > 0) {
+      try {
+        const dexResults = await Promise.all(
+          idsNeedingBase.map(async (id) => {
+            const sym = symbolById.get(id);
+            if (!sym) return null;
+            try {
+              const dexUrl = `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(sym)}%20aptos`;
+              const dexResp = await fetch(dexUrl);
+              if (dexResp.ok) {
+                const dexData = await dexResp.json();
+                const pairs = dexData?.pairs || [];
+                const aptPair = pairs.find((p: any) => p.chainId === 'aptos' && p.priceUsd && (p.baseToken?.symbol === sym || p.quoteToken?.symbol === sym));
+                if (aptPair?.priceUsd) {
+                  const price = parseFloat(aptPair.priceUsd);
+                  console.log(`✓ Base price for ${sym} from DexScreener: $${price}`);
+                  return { id, price };
+                }
+              }
+            } catch (e) {
+              console.log(`DexScreener base price error for ${sym}:`, e);
+            }
+            return null;
+          })
+        );
+        for (const r of dexResults) {
+          if (r) baseNowPrices.set(r.id, r.price);
+        }
+      } catch (e) {
+        console.log('DexScreener base price parallel fetch error:', e);
+      }
+    }
+
     // Build net flows per day per token (true historical balances)
     const USE_FLOWS = true; // Enable flows to track transaction activity (deposits/withdrawals)
     const flowsByDateById = new Map<string, Map<string, number>>();
@@ -350,6 +399,9 @@ serve(async (req) => {
         const p = prices[ds];
         if (typeof p === 'number') return p;
       }
+      // Fallback to base/live price if no historical data for this token
+      const base = baseNowPrices.get(id);
+      if (typeof base === 'number' && isFinite(base) && base > 0) return base;
       return 0;
     };
 
