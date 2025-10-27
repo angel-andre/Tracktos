@@ -2,6 +2,12 @@ import { Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { formatTokenAmount, formatCount } from "@/lib/formatters";
 
 interface AccountData {
@@ -20,6 +26,7 @@ interface AccountCardProps {
   transactionCount?: number;
   nftCount?: number;
   tokenCount?: number;
+  sentimentReasons?: string[];
 }
 
 const calculateSentiment = (
@@ -52,7 +59,7 @@ const calculateSentiment = (
   return Math.min(100, Math.max(0, score));
 };
 
-export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0, tokenCount = 0 }: AccountCardProps) {
+export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0, tokenCount = 0, sentimentReasons = [] }: AccountCardProps) {
   const sentiment = data 
     ? calculateSentiment(transactionCount, nftCount, tokenCount, parseFloat(data.stakedApt))
     : 50;
@@ -210,7 +217,29 @@ export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0,
             <div className="p-4 rounded-lg bg-gradient-to-br from-primary/5 to-accent/5 border border-border/30">
               <div className="flex justify-between items-center mb-3">
                 <p className="text-sm text-muted-foreground">Wallet Sentiment</p>
-                <p className={`text-sm font-bold ${sentimentLabel.color}`}>{sentimentLabel.text}</p>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <p className={`text-sm font-bold ${sentimentLabel.color} cursor-help`}>
+                        {sentimentLabel.text}
+                      </p>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <div className="space-y-2">
+                        <p className="font-semibold text-sm">Sentiment Drivers:</p>
+                        {sentimentReasons.length > 0 ? (
+                          <ul className="list-disc list-inside text-xs space-y-1">
+                            {sentimentReasons.map((reason, index) => (
+                              <li key={index}>{reason}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No sentiment data available</p>
+                        )}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
               <div className="space-y-2">
                 <Slider

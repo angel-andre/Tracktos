@@ -52,6 +52,8 @@ interface AptosData {
   totalNftCount: number;
   totalTransactionCount: number;
   totalUsdValue: number;
+  sentimentScore: number;
+  sentimentReasons: string[];
 }
 
 export default function IndexPage() {
@@ -178,6 +180,7 @@ export default function IndexPage() {
               transactionCount={data?.totalTransactionCount || 0}
               nftCount={data?.totalNftCount || 0}
               tokenCount={data?.tokens?.length || 0}
+              sentimentReasons={data?.sentimentReasons || []}
             />
             <TokensCard 
               tokens={data?.tokens || null} 
