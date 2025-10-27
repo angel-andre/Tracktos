@@ -164,10 +164,10 @@ serve(async (req) => {
     try {
       const primaryBase = network === 'testnet'
         ? 'https://fullnode.testnet.aptoslabs.com/v1'
-        : 'https://api.mainnet.aptoslabs.com/v1';
+        : 'https://fullnode.mainnet.aptoslabs.com/v1';
       const altBase = network === 'testnet'
         ? 'https://api.testnet.aptoslabs.com/v1'
-        : 'https://fullnode.mainnet.aptoslabs.com/v1';
+        : 'https://api.mainnet.aptoslabs.com/v1';
 
       const coinStorePath = `/accounts/${address}/resource/0x1::coin::CoinStore%3C0x1::aptos_coin::AptosCoin%3E`;
 
@@ -180,25 +180,56 @@ serve(async (req) => {
         return digits ? BigInt(digits) : 0n;
       }
 
+      async function fetchCoinView(base: string) {
+        const resp = await fetch(`${base}/view`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            function: '0x1::coin::balance',
+            type_arguments: ['0x1::aptos_coin::AptosCoin'],
+            arguments: [address]
+          })
+        });
+        if (!resp.ok) throw new Error(`View fetch failed ${resp.status}`);
+        const arr = await resp.json();
+        const raw = Array.isArray(arr) ? (arr[0] ?? '0') : '0';
+        const digits = String(raw).replace(/\D/g, '');
+        return digits ? BigInt(digits) : 0n;
+      }
+
       let coinRaw: bigint | null = null;
       try {
         coinRaw = await fetchCoinStore(primaryBase);
+        console.log('CoinStore primary ok');
       } catch (e) {
+        console.log('CoinStore primary failed, trying alt');
         try {
           coinRaw = await fetchCoinStore(altBase);
+          console.log('CoinStore alt ok');
         } catch (_) {
-          coinRaw = null;
+          console.log('CoinStore alt failed, trying view');
+          try {
+            coinRaw = await fetchCoinView(primaryBase);
+            console.log('View primary ok');
+          } catch (e2) {
+            try {
+              coinRaw = await fetchCoinView(altBase);
+              console.log('View alt ok');
+            } catch (e3) {
+              coinRaw = null;
+            }
+          }
         }
       }
 
       if (coinRaw !== null && coinRaw >= 0n) {
         aptBalance = formatUnits(String(coinRaw), 8);
-        console.log('✓ APT balance (CoinStore):', aptBalance);
+        console.log('✓ APT balance (Fullnode):', aptBalance);
       } else {
         console.log('Using FA aggregated fallback APT balance:', aptBalance);
       }
     } catch (e) {
-      console.log('CoinStore lookup failed; using FA aggregated fallback APT balance:', aptBalance);
+      console.log('Fullnode lookup failed; using FA aggregated fallback APT balance:', aptBalance);
     }
 
     // Parse staked APT
