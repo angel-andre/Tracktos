@@ -276,7 +276,11 @@ export function PremiumNFTsCard({ nfts, loading }: PremiumNFTsCardProps) {
                   <div className="mt-2 pt-2 border-t border-border/30">
                     <p className="text-xs text-muted-foreground">Purchase Price:</p>
                     <p className="text-sm font-bold text-primary">
-                      {nft.price ? formatNumber(nft.price, 2) : 'N/A'}
+                      {nft.price ? (
+                        parseFloat(nft.price.toString().split(' ')[0]) === 0 
+                          ? 'Free Mint' 
+                          : `${formatNumber(nft.price.toString().split(' ')[0], 2)} APT`
+                      ) : 'N/A'}
                     </p>
                   </div>
                 </div>

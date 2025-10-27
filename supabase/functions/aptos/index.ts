@@ -657,7 +657,7 @@ serve(async (req) => {
     let lastTransactionTimestamp = '';
     
     // Fetch more transactions to find NFT purchases (limit increased for better coverage)
-    const txUrl = `${fullnodeBase}/accounts/${address}/transactions?limit=300`;
+    const txUrl = `${fullnodeBase}/accounts/${address}/transactions?limit=500`;
     const txResp = await fetch(txUrl, { headers: { 'Accept': 'application/json' } });
     
     let activity: Array<{ hash: string; type: string; success: boolean; timestamp: string }> = [];
@@ -674,7 +674,14 @@ serve(async (req) => {
         
         // Look for common NFT marketplace functions and minting functions
         const fnStr: string = payload?.function || '';
-        const isNftTransaction = /token|nft|mint|buy|purchase/i.test(fnStr);
+        const isNftTransaction = 
+          /token|nft|mint|buy|purchase|claim|list|delist|transfer_token|offer|bid/i.test(fnStr) ||
+          fnStr.includes('::token::') ||
+          fnStr.includes('::nft::') ||
+          events.some((e: any) => {
+            const et = String(e?.type || '');
+            return /token|nft|mint/i.test(et);
+          });
         
         if (isNftTransaction) {
           let priceInOctas = '0';
@@ -743,18 +750,17 @@ serve(async (req) => {
           }
           
           // Convert octas to APT (1 APT = 100000000 octas) and map to identifiers
-          if (priceInOctas !== '0') {
-            const priceApt = formatUnits(priceInOctas, 8);
-            if (tokenId) {
-              nftPriceMap.set(String(tokenId).toLowerCase(), { price: priceApt, hash: tx.hash });
-              matchedByTokenId++;
-            }
-            if (nameFromChange && collectionFromChange) {
-              const key = `${collectionFromChange}::${nameFromChange}`.toLowerCase();
-              if (!nftPriceMap.has(key)) {
-                nftPriceMap.set(key, { price: priceApt, hash: tx.hash });
-                matchedByNameCollection++;
-              }
+          // Store price even if it's 0 (free mint/airdrop)
+          const priceApt = formatUnits(priceInOctas, 8);
+          if (tokenId) {
+            nftPriceMap.set(String(tokenId).toLowerCase(), { price: priceApt, hash: tx.hash });
+            matchedByTokenId++;
+          }
+          if (nameFromChange && collectionFromChange) {
+            const key = `${collectionFromChange}::${nameFromChange}`.toLowerCase();
+            if (!nftPriceMap.has(key)) {
+              nftPriceMap.set(key, { price: priceApt, hash: tx.hash });
+              matchedByNameCollection++;
             }
           }
         }
@@ -899,7 +905,7 @@ serve(async (req) => {
                   decimals = 8;
                 }
               }
-              const priceStr = `${formatUnits(rec.amt, decimals)} ${symbol}`;
+              const priceStr = formatUnits(rec.amt, decimals);
               const tokenId = String(ta.token_data_id || '').toLowerCase();
               if (tokenId) {
                 if (!nftPriceMap.has(tokenId)) {
@@ -924,7 +930,44 @@ serve(async (req) => {
     const nftsWithPrices = nfts.map(nft => {
       const keyById = String(nft.tokenDataId || '').toLowerCase();
       const keyByNC = `${nft.collection}::${nft.name}`.toLowerCase();
-      const priceData = nftPriceMap.get(keyById) || nftPriceMap.get(keyByNC) || null;
+      
+      // Try multiple matching strategies
+      let priceData = nftPriceMap.get(keyById);
+      
+      // Try collection::name format
+      if (!priceData) {
+        priceData = nftPriceMap.get(keyByNC);
+      }
+      
+      // Try just the token data id without case sensitivity
+      if (!priceData && nft.tokenDataId) {
+        for (const [key, value] of nftPriceMap.entries()) {
+          if (key === keyById || key.includes(keyById) || keyById.includes(key)) {
+            priceData = value;
+            console.log(`✓ Matched NFT by partial token ID: ${nft.name}`);
+            break;
+          }
+        }
+      }
+      
+      // Try matching by name only (last resort)
+      if (!priceData) {
+        const nftNameLower = nft.name.toLowerCase();
+        for (const [key, value] of nftPriceMap.entries()) {
+          if (key.includes(nftNameLower)) {
+            priceData = value;
+            console.log(`✓ Matched NFT by name: ${nft.name}`);
+            break;
+          }
+        }
+      }
+      
+      if (priceData) {
+        console.log(`✓ Price found for "${nft.name}": ${priceData.price}`);
+      } else {
+        console.log(`⚠️ No price found for "${nft.name}" (tokenId: ${keyById})`);
+      }
+      
       return {
         name: nft.name,
         collection: nft.collection,
