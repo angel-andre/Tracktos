@@ -930,6 +930,7 @@ serve(async (req) => {
 
             // Map token ids to prices in APT (using first acquisition version)
             let joined = 0;
+            let zeroPriced = 0;
             for (const [id, version] of firstVersionByToken.entries()) {
               const wd = withdrawByVersion.get(version);
               if (wd) {
@@ -938,9 +939,15 @@ serve(async (req) => {
                   nftPriceMap.set(id, { price: priceApt, hash: String(version) });
                   joined++;
                 }
+              } else {
+                // No payment observed on acquisition tx -> assume free mint/airdrop
+                if (!nftPriceMap.has(id)) {
+                  nftPriceMap.set(id, { price: '0', hash: String(version) });
+                  zeroPriced++;
+                }
               }
             }
-            console.log('✓ Targeted price enrichment:', joined, 'priced of', ownedTokenIds.length, 'shown NFTs');
+            console.log('✓ Targeted price enrichment:', joined, 'priced,', zeroPriced, 'assumed free mints, out of', ownedTokenIds.length, 'shown NFTs');
           } else {
             console.log('Token activities query errors:', JSON.stringify(taData.errors).slice(0, 200));
           }
