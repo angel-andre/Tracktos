@@ -605,6 +605,18 @@ serve(async (req) => {
       };
     });
 
+    // Add APT to the tokens list
+    const aptPrice = priceMap.get('APT') || 0;
+    const aptUsdValue = parseFloat(aptBalance) * aptPrice;
+    tokensWithUsd.push({
+      name: 'Aptos Coin',
+      symbol: 'APT',
+      balance: aptBalance,
+      usdPrice: aptPrice,
+      usdValue: aptUsdValue,
+      logoUrl: logoUrls['APT'] || ''
+    });
+
     // Sort tokens by USD value (highest first), fallback to balance
     tokensWithUsd.sort((a, b) => {
       if (b.usdValue !== a.usdValue) return b.usdValue - a.usdValue;
@@ -613,27 +625,20 @@ serve(async (req) => {
     
     const topTokens = tokensWithUsd.slice(0, 10);
     
-    // Calculate total USD value including APT balance
-    const aptPrice = priceMap.get('APT') || 0;
-    const aptUsdValue = parseFloat(aptBalance) * aptPrice;
-    const tokensUsdValue = topTokens.reduce((sum, token) => sum + token.usdValue, 0);
-    const totalUsdValue = aptUsdValue + tokensUsdValue;
+    // Calculate total USD value from all top tokens (APT now included)
+    const totalUsdValue = topTokens.reduce((sum, token) => sum + token.usdValue, 0);
     
     console.log(`✓ Total portfolio USD value: $${totalUsdValue.toFixed(2)}`);
 
     // Calculate 24h change (using already-fetched historical prices)
     console.log('Calculating 24h portfolio change...');
     
-    const aptPrice24hAgo = historicalPriceMap.get('APT') || aptPrice; // fallback to current if unavailable
-    const aptUsdValue24hAgo = parseFloat(aptBalance) * aptPrice24hAgo;
-    
-    const tokensUsdValue24hAgo = topTokens.reduce((sum, token) => {
+    const totalUsdValue24hAgo = topTokens.reduce((sum, token) => {
       const price24hAgo = historicalPriceMap.get(token.symbol.toUpperCase()) || token.usdPrice; // fallback to current
       const balance = parseFloat(token.balance) || 0;
       return sum + (balance * price24hAgo);
     }, 0);
     
-    const totalUsdValue24hAgo = aptUsdValue24hAgo + tokensUsdValue24hAgo;
     const usdChange24h = totalUsdValue - totalUsdValue24hAgo;
     const percentChange24h = totalUsdValue24hAgo > 0 
       ? (usdChange24h / totalUsdValue24hAgo) * 100 
