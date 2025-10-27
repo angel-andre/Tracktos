@@ -8,7 +8,6 @@ import { AccountCard } from "@/components/dashboard/AccountCard";
 import { TokensCard } from "@/components/dashboard/TokensCard";
 import { ActivityCard } from "@/components/dashboard/ActivityCard";
 import { NFTsCard } from "@/components/dashboard/NFTsCard";
-import { PremiumNFTsCard } from "@/components/dashboard/PremiumNFTsCard";
 import { PortfolioChartCard } from "@/components/dashboard/PortfolioChartCard";
 import { WalletIdentityCard } from "@/components/dashboard/WalletIdentityCard";
 import { TransactionAnalyticsCard } from "@/components/dashboard/TransactionAnalyticsCard";
@@ -234,7 +233,6 @@ export default function IndexPage() {
             </TabsContent>
 
             <TabsContent value="nfts" className="space-y-6">
-              <PremiumNFTsCard nfts={data?.nfts || null} loading={loading} network={network} />
               <NFTsCard nfts={data?.nfts || null} loading={loading} network={network} />
             </TabsContent>
 
