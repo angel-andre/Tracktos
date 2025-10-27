@@ -7,6 +7,7 @@ import { AccountCard } from "@/components/dashboard/AccountCard";
 import { TokensCard } from "@/components/dashboard/TokensCard";
 import { ActivityCard } from "@/components/dashboard/ActivityCard";
 import { NFTsCard } from "@/components/dashboard/NFTsCard";
+import { PremiumNFTsCard } from "@/components/dashboard/PremiumNFTsCard";
 import aptosLogo from "@/assets/aptos-logo.png";
 
 interface AccountData {
@@ -175,6 +176,9 @@ export default function IndexPage() {
             <ActivityCard activity={data?.activity || null} loading={loading} />
           </div>
         </div>
+
+        {/* Featured NFTs Section */}
+        <PremiumNFTsCard nfts={data?.nfts || null} loading={loading} />
 
         {/* Full Width NFT Section */}
         <NFTsCard nfts={data?.nfts || null} loading={loading} />
