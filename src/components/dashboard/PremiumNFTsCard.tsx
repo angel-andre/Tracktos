@@ -74,6 +74,7 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
   const [loaded, setLoaded] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
   const [finalSrc, setFinalSrc] = React.useState<string | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
   const loadedRef = React.useRef(false);
   const src = srcs[i];
 
@@ -81,6 +82,7 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
     setLoaded(false);
     setFailed(false);
     setFinalSrc(null);
+    setIsLoading(true);
     let cancelled = false;
     loadedRef.current = false;
 
@@ -179,29 +181,49 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
       const next = prev + 1;
       if (next < srcs.length) return next;
       setFailed(true);
+      setIsLoading(false);
       return prev;
     });
   };
-  const onLoad = () => { setLoaded(true); loadedRef.current = true; };
+  const onLoad = () => { 
+    setLoaded(true); 
+    setIsLoading(false);
+    loadedRef.current = true; 
+  };
 
   if (failed || !src) {
-    return <ImageIcon className="w-12 h-12 text-muted-foreground" />;
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-muted/20">
+        <ImageIcon className="w-12 h-12 text-muted-foreground opacity-50" />
+      </div>
+    );
   }
 
   if (!finalSrc) {
-    return <div className="w-full h-full animate-pulse bg-muted/30" />;
+    return (
+      <div className="w-full h-full relative bg-gradient-to-br from-muted/30 via-muted/20 to-muted/30 animate-pulse">
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/10 to-transparent animate-[slide-in-right_1.5s_ease-in-out_infinite]" />
+      </div>
+    );
   }
 
   return (
-    <img
-      src={finalSrc}
-      alt={alt}
-      className={className}
-      loading="lazy"
-      decoding="async"
-      onLoad={onLoad}
-      onError={onError}
-    />
+    <div className="relative w-full h-full">
+      {isLoading && (
+        <div className="absolute inset-0 bg-gradient-to-br from-muted/30 via-muted/20 to-muted/30 animate-pulse z-10">
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/10 to-transparent animate-[slide-in-right_1.5s_ease-in-out_infinite]" />
+        </div>
+      )}
+      <img
+        src={finalSrc}
+        alt={alt}
+        className={`${className} ${isLoading ? 'opacity-0' : 'opacity-100 transition-opacity duration-500'}`}
+        loading="lazy"
+        decoding="async"
+        onLoad={onLoad}
+        onError={onError}
+      />
+    </div>
   );
 };
 
