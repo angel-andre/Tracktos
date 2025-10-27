@@ -22,6 +22,9 @@ interface Token {
   name: string;
   symbol: string;
   balance: string;
+  usdPrice: number;
+  usdValue: number;
+  logoUrl: string;
 }
 
 interface NFT {
@@ -46,6 +49,7 @@ interface AptosData {
   activity: Transaction[];
   totalNftCount: number;
   totalTransactionCount: number;
+  totalUsdValue: number;
 }
 
 export default function IndexPage() {
@@ -173,7 +177,11 @@ export default function IndexPage() {
               nftCount={data?.totalNftCount || 0}
               tokenCount={data?.tokens?.length || 0}
             />
-            <TokensCard tokens={data?.tokens || null} loading={loading} />
+            <TokensCard 
+              tokens={data?.tokens || null} 
+              totalUsdValue={data?.totalUsdValue || 0}
+              loading={loading} 
+            />
           </div>
           
           <div className="space-y-6">
