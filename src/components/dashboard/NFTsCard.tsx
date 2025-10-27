@@ -339,7 +339,11 @@ export function NFTsCard({ nfts, loading, network = "mainnet" }: NFTsCardProps) 
                     <p className="text-xs font-semibold text-foreground truncate">{nft.name}</p>
                     <p className="text-xs text-muted-foreground truncate">{nft.collection}</p>
                     <div className="mt-2 pt-2 border-t border-border/30">
-                      <p className="text-xs text-muted-foreground">Purchase Price:</p>
+                      <p className="text-xs text-muted-foreground">
+                        {nft.price && parseFloat(nft.price.toString().split(' ')[0]) > 0 
+                          ? 'Purchase/Floor Price:' 
+                          : 'Est. Value:'}
+                      </p>
                       <p className="text-sm font-bold text-primary">
                         {nft.price ? (
                           parseFloat(nft.price.toString().split(' ')[0]) === 0 

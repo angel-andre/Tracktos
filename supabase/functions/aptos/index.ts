@@ -1675,6 +1675,50 @@ serve(async (req) => {
       console.log('Enhanced price enrichment failed:', String(err));
     }
 
+    // Fetch current floor prices from Aptos NFT Analytics API (aggregates Wapal and other marketplaces)
+    const floorPricesByCollection = new Map<string, number>();
+    try {
+      // Extract unique collections from NFTs
+      const uniqueCollections = new Set(nfts.map(n => n.collection).filter(Boolean));
+      
+      if (uniqueCollections.size > 0) {
+        console.log(`Fetching floor prices for ${uniqueCollections.size} collections from Aptos Analytics API...`);
+        
+        // Query Analytics API for collection stats (includes floor price)
+        const analyticsPromises = Array.from(uniqueCollections).map(async (collectionName) => {
+          try {
+            // Search by collection name - the API might have different endpoints
+            const searchUrl = `https://api.mainnet.aptoslabs.com/v1/analytics/nft/collection/${encodeURIComponent(collectionName)}`;
+            const resp = await fetch(searchUrl, {
+              headers: { 'Accept': 'application/json' }
+            });
+            
+            if (resp.ok) {
+              const data = await resp.json();
+              // Extract floor price from response (structure may vary)
+              const floorPrice = data?.floor_price || data?.floorPrice || data?.stats?.floor_price;
+              if (floorPrice && Number.isFinite(floorPrice) && floorPrice > 0) {
+                console.log(`✓ Floor price for "${collectionName}": ${floorPrice} APT`);
+                return { collection: collectionName, floorPrice: Number(floorPrice) };
+              }
+            }
+          } catch (e) {
+            console.log(`Failed to fetch floor for "${collectionName}":`, String(e).slice(0, 100));
+          }
+          return null;
+        });
+        
+        const results = await Promise.all(analyticsPromises);
+        results.forEach(r => {
+          if (r) floorPricesByCollection.set(r.collection, r.floorPrice);
+        });
+        
+        console.log(`✓ Fetched floor prices for ${floorPricesByCollection.size}/${uniqueCollections.size} collections`);
+      }
+    } catch (err) {
+      console.log('Floor price fetching failed:', String(err));
+    }
+
     // Match NFT prices to owned NFTs (by tokenDataId or collection+name fallback)
     const nftsWithPrices = nfts.map(nft => {
       const keyById = String(nft.tokenDataId || '').toLowerCase();
@@ -1714,14 +1758,27 @@ serve(async (req) => {
       if (priceData) {
         console.log(`✓ Price found for "${nft.name}": ${priceData.price}`);
       } else {
-        console.log(`⚠️ No price found for "${nft.name}" (tokenId: ${keyById})`);
+        console.log(`⚠️ No purchase price found for "${nft.name}" (tokenId: ${keyById})`);
+      }
+      
+      // Get floor price for this collection
+      const floorPrice = floorPricesByCollection.get(nft.collection);
+      
+      // Use purchase price if available, otherwise use floor price as estimate
+      let displayPrice = priceData?.price;
+      if (!displayPrice || displayPrice === '0' || parseFloat(displayPrice) === 0) {
+        if (floorPrice && floorPrice > 0) {
+          displayPrice = String(floorPrice);
+          console.log(`  Using floor price ${floorPrice} APT for "${nft.name}"`);
+        }
       }
       
       return {
         name: nft.name,
         collection: nft.collection,
         image: nft.image,
-        price: priceData?.price,
+        price: displayPrice,
+        floorPrice: floorPrice ? String(floorPrice) : undefined,
         purchaseHash: priceData?.hash,
         tokenDataId: nft.tokenDataId,
       };
