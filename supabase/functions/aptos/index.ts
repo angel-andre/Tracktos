@@ -472,26 +472,27 @@ serve(async (req) => {
       console.log('✓ NFT prices found:', nftPriceMap.size, 'byTokenId:', matchedByTokenId, 'byNameCollection:', matchedByNameCollection);
     }
 
-    // Fallback/enrichment via GraphQL join between token and coin activities
+    // Fallback/enrichment via GraphQL join between token activities and fungible asset withdrawals
     try {
       const priceJoinQuery = `
         query PriceJoins($address: String!) {
           token_activities_v2(
             where: {to_address: {_eq: $address}},
             order_by: {transaction_version: desc},
-            limit: 300
+            limit: 500
           ) {
             transaction_version
             token_data_id
           }
-          coin_activities(
-            where: {owner_address: {_eq: $address}, activity_type: {_eq: "withdraw"}},
+          fungible_asset_activities(
+            where: {owner_address: {_eq: $address}},
             order_by: {transaction_version: desc},
-            limit: 1000
+            limit: 2000
           ) {
             transaction_version
             amount
-            coin_type
+            asset_type
+            entry_function_id_str
           }
         }
       `;
@@ -506,19 +507,22 @@ serve(async (req) => {
         const joinData = await joinResp.json();
         if (!joinData.errors) {
           const toks = joinData.data?.token_activities_v2 || [];
-          const coins = joinData.data?.coin_activities || [];
+          const faas = joinData.data?.fungible_asset_activities || [];
 
+          // Build map of largest APT withdraw per version (exclude non-APT assets)
           const withdrawByVersion = new Map<number, string>();
-          for (const ca of coins) {
-            const v = Number(ca.transaction_version ?? -1);
-            const amt = String(ca.amount ?? '0').replace(/\D/g, '') || '0';
-            const type = String(ca.coin_type || '');
-            // prefer APT coin types
-            if (!withdrawByVersion.has(v) || type.includes('0x1::aptos_coin::AptosCoin')) {
-              withdrawByVersion.set(v, amt);
+          for (const fa of faas) {
+            const v = Number(fa.transaction_version ?? -1);
+            const amt = String(fa.amount ?? '0').replace(/\D/g, '') || '0';
+            const asset = String(fa.asset_type || '');
+            // Only consider APT movements and prefer the largest per version
+            if (asset.includes('0x1::aptos_coin::AptosCoin')) {
+              const prev = withdrawByVersion.get(v) || '0';
+              if (BigInt(amt) > BigInt(prev)) withdrawByVersion.set(v, amt);
             }
           }
 
+          let joined = 0;
           for (const ta of toks) {
             const v = Number(ta.transaction_version ?? -1);
             const amt = withdrawByVersion.get(v) || '0';
@@ -528,12 +532,17 @@ serve(async (req) => {
               if (tokenId) {
                 if (!nftPriceMap.has(tokenId)) {
                   nftPriceMap.set(tokenId, { price: priceApt, hash: String(v) });
+                  joined++;
                 }
               }
             }
           }
-          console.log('✓ Enriched NFT prices via GraphQL:', nftPriceMap.size);
+          console.log('✓ Enriched NFT prices via GraphQL join:', joined, 'total in map:', nftPriceMap.size);
+        } else {
+          console.log('GraphQL join errors:', JSON.stringify(joinData.errors).slice(0, 200));
         }
+      } else {
+        console.log('GraphQL join HTTP error:', joinResp.status);
       }
     } catch (err) {
       console.log('GraphQL price join failed:', String(err));
