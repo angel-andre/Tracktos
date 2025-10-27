@@ -10,6 +10,7 @@ import { NFTsCard } from "@/components/dashboard/NFTsCard";
 import { PremiumNFTsCard } from "@/components/dashboard/PremiumNFTsCard";
 import { PortfolioChartCard } from "@/components/dashboard/PortfolioChartCard";
 import { WalletIdentityCard } from "@/components/dashboard/WalletIdentityCard";
+import { TransactionAnalyticsCard } from "@/components/dashboard/TransactionAnalyticsCard";
 import aptosLogo from "@/assets/aptos-logo.png";
 
 interface AccountData {
@@ -64,6 +65,12 @@ interface AptosData {
       description: string;
       icon: string;
     }>;
+  };
+  transactionAnalytics?: {
+    activityHeatmap: { date: string; count: number }[];
+    typeBreakdown: { type: string; count: number; percentage: number }[];
+    gasOverTime: { date: string; gas: string }[];
+    topContracts: { address: string; name: string; count: number; type: string }[];
   };
 }
 
@@ -193,6 +200,13 @@ export default function IndexPage() {
               transactionCount={data?.totalTransactionCount || 0}
             />
           </div>
+
+          {/* Transaction Analytics Card - spans 2 columns */}
+          {data?.transactionAnalytics && (
+            <div className="lg:col-span-2">
+              <TransactionAnalyticsCard analytics={data.transactionAnalytics} />
+            </div>
+          )}
 
           <div className="space-y-6">
             <AccountCard 

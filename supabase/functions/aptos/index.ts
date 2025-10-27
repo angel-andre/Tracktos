@@ -50,6 +50,12 @@ interface AptosResponse {
       icon: string;
     }>;
   };
+  transactionAnalytics?: {
+    activityHeatmap: { date: string; count: number }[];
+    typeBreakdown: { type: string; count: number; percentage: number }[];
+    gasOverTime: { date: string; gas: string }[];
+    topContracts: { address: string; name: string; count: number; type: string }[];
+  };
 }
 
 serve(async (req) => {
@@ -753,6 +759,113 @@ serve(async (req) => {
     }
     console.log(`✓ Gas calc on ${userTxs.length} unique user txs (${allTransactions.length} raw): ${totalGasSpent} APT. Active days: ${activeDays}`);
     
+    // Transaction Analytics: Analyze transaction patterns
+    console.log('Computing transaction analytics...');
+    
+    // Activity Heatmap: Count transactions per day
+    const dailyCounts = new Map<string, number>();
+    const dailyGas = new Map<string, bigint>();
+    const contractCounts = new Map<string, { name: string; count: number; type: string }>();
+    const typeCounts = new Map<string, number>();
+    
+    for (const tx of userTxs) {
+      const iso = toISOFromTx(tx);
+      const date = iso.split('T')[0];
+      
+      // Heatmap data
+      dailyCounts.set(date, (dailyCounts.get(date) || 0) + 1);
+      
+      // Gas over time
+      if (tx.gas_used != null && tx.gas_unit_price != null) {
+        const gasUsed = parseBig(tx.gas_used);
+        const gasPrice = parseBig(tx.gas_unit_price);
+        const txGas = gasUsed * gasPrice;
+        dailyGas.set(date, (dailyGas.get(date) || 0n) + txGas);
+      }
+      
+      // Categorize transaction type
+      let txType = 'Other';
+      if (tx.payload?.type === 'entry_function_payload' && tx.payload.function) {
+        const func = tx.payload.function.toLowerCase();
+        if (func.includes('transfer') || func.includes('send')) {
+          txType = 'Transfer';
+        } else if (func.includes('swap') || func.includes('trade')) {
+          txType = 'Swap';
+        } else if (func.includes('mint')) {
+          txType = 'NFT Mint';
+        } else if (func.includes('stake')) {
+          txType = 'Staking';
+        } else if (func.includes('unstake')) {
+          txType = 'Unstaking';
+        } else if (func.includes('claim')) {
+          txType = 'Claim';
+        }
+        
+        // Track contract interactions
+        const funcParts = tx.payload.function.split('::');
+        if (funcParts.length >= 2) {
+          const contractAddr = funcParts[0];
+          const module = funcParts[1];
+          
+          // Identify known protocols
+          let contractName = 'Unknown Contract';
+          let contractType = 'DeFi';
+          
+          if (contractAddr.includes('pancake') || module.includes('pancake')) {
+            contractName = 'PancakeSwap';
+            contractType = 'DEX';
+          } else if (contractAddr.includes('liquidswap') || module.includes('liquidswap')) {
+            contractName = 'LiquidSwap';
+            contractType = 'DEX';
+          } else if (contractAddr.includes('tortuga') || module.includes('stake')) {
+            contractName = 'Tortuga Staking';
+            contractType = 'Staking';
+          } else if (module.includes('coin')) {
+            contractName = 'Coin Operations';
+            contractType = 'Transfer';
+          } else if (module.includes('token')) {
+            contractName = 'NFT Operations';
+            contractType = 'NFT';
+          } else {
+            contractName = `${module.charAt(0).toUpperCase() + module.slice(1)}`;
+          }
+          
+          const existing = contractCounts.get(contractAddr) || { name: contractName, count: 0, type: contractType };
+          contractCounts.set(contractAddr, { ...existing, count: existing.count + 1 });
+        }
+      }
+      
+      typeCounts.set(txType, (typeCounts.get(txType) || 0) + 1);
+    }
+    
+    // Format heatmap data
+    const activityHeatmap = Array.from(dailyCounts.entries())
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    
+    // Format type breakdown with percentages
+    const totalTyped = Array.from(typeCounts.values()).reduce((sum, c) => sum + c, 0);
+    const typeBreakdown = Array.from(typeCounts.entries())
+      .map(([type, count]) => ({
+        type,
+        count,
+        percentage: Math.round((count / totalTyped) * 100)
+      }))
+      .sort((a, b) => b.count - a.count);
+    
+    // Format gas over time
+    const gasOverTime = Array.from(dailyGas.entries())
+      .map(([date, gas]) => ({ date, gas: formatUnits(String(gas), 8) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    
+    // Format top contracts
+    const topContracts = Array.from(contractCounts.entries())
+      .map(([address, data]) => ({ address, ...data }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+    
+    console.log(`✓ Analytics: ${activityHeatmap.length} active days, ${typeBreakdown.length} tx types, ${topContracts.length} contracts`);
+    
     // Fetch sample transactions for detailed analysis (NFT purchases, activity parsing)
     let transactions: any[] = [];
     const analysisBatchSize = 500;
@@ -1384,6 +1497,12 @@ serve(async (req) => {
         activeDays,
         totalGasSpent,
         badges
+      },
+      transactionAnalytics: {
+        activityHeatmap,
+        typeBreakdown,
+        gasOverTime,
+        topContracts
       }
     };
 
