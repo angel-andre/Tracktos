@@ -147,7 +147,7 @@ serve(async (req) => {
       }
     }
 
-    // Second pass: create priced token list (APT, stables at $1, and mapped Aptos tokens via CoinGecko)
+    // Second pass: ONLY track APT and stablecoins (USDC/USDT) for accurate portfolio value
     for (const item of balances) {
       const symbol = item.metadata?.symbol?.toUpperCase() || '';
       const decimals = item.metadata?.decimals ?? 8;
@@ -155,14 +155,8 @@ serve(async (req) => {
       const assetType = item.asset_type as string;
       if (balance <= 0) continue;
 
-      // Prefer exact APT mapping; treat known stables as $1 without CoinGecko
+      // Only include APT or stablecoins (USDC/USDT)
       let cgId: string | null = getCoinGeckoIdIfApt(symbol, assetType) || (isStableUsd(symbol) ? 'STABLE_USD' : null);
-
-      // If not APT/stable, try to map by Aptos contract address via CoinGecko platforms
-      if (!cgId) {
-        const key = normalizeAptosAssetType(assetType);
-        if (key) cgId = aptosPlatformMap.get(key) || null;
-      }
 
       if (cgId) {
         rawTokenBalances.push({ symbol, balance, assetType, coinGeckoId: cgId });
@@ -256,7 +250,7 @@ serve(async (req) => {
     );
 
     // Build net flows per day per token (true historical balances)
-    const USE_FLOWS = false; // Temporary safe mode: disable flows while we verify signs and schema
+    const USE_FLOWS = true; // Enable flows to track transaction activity (deposits/withdrawals)
     const flowsByDateById = new Map<string, Map<string, number>>();
     
     if (USE_FLOWS) {
