@@ -217,15 +217,15 @@ export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0,
             <div className="p-4 rounded-lg bg-gradient-to-br from-primary/5 to-accent/5 border border-border/30">
               <div className="flex justify-between items-center mb-3">
                 <p className="text-sm text-muted-foreground">Wallet Sentiment</p>
-                <TooltipProvider>
+                <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <p className={`text-sm font-bold ${sentimentLabel.color} cursor-help`}>
+                      <span className={`text-sm font-bold ${sentimentLabel.color} cursor-help underline decoration-dotted`}>
                         {sentimentLabel.text}
-                      </p>
+                      </span>
                     </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <div className="space-y-2">
+                    <TooltipContent className="max-w-xs z-50" side="left">
+                      <div className="space-y-2 p-1">
                         <p className="font-semibold text-sm">Sentiment Drivers:</p>
                         {sentimentReasons.length > 0 ? (
                           <ul className="list-disc list-inside text-xs space-y-1">
