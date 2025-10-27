@@ -461,8 +461,27 @@ serve(async (req) => {
         }
       }
 
+      // Ensure APT live price via CoinGecko coins endpoint if missing
+      if (ids.includes('aptos') && !nowPrices.has('aptos')) {
+        try {
+          const cgResp = await fetch('https://api.coingecko.com/api/v3/coins/aptos?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false');
+          if (cgResp.ok) {
+            const cg = await cgResp.json();
+            const p = Number(cg?.market_data?.current_price?.usd);
+            if (Number.isFinite(p)) {
+              nowPrices.set('aptos', p);
+              console.log(`✓ Live price for aptos via CG coins: $${p}`);
+            }
+          } else {
+            console.log('CG coins fallback failed:', cgResp.status);
+          }
+        } catch (e) {
+          console.log('CG coins fallback error:', e);
+        }
+      }
+
       // Fallback: For tokens missing from CoinGecko, try DexScreener (Aptos chain only)
-      const missingIds = ids.filter((id) => !nowPrices.has(id));
+      const missingIds = ids.filter((id) => !nowPrices.has(id) && id !== 'aptos');
       if (missingIds.length > 0) {
         // Build id -> symbol map
         const symbolById = new Map<string, string>();
