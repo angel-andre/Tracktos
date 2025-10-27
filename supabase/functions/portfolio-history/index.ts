@@ -104,12 +104,14 @@ serve(async (req) => {
     // Process current balances
     const rawTokenBalances: Array<{ symbol: string; balance: number; assetType: string; coinGeckoId: string } > = [];
     const balances = graphqlData.data?.current_fungible_asset_balances || [];
+    const decimalsByAsset = new Map<string, number>();
     
     for (const item of balances) {
       const symbol = item.metadata?.symbol?.toUpperCase() || '';
       const decimals = item.metadata?.decimals ?? 8;
       const balance = formatUnits(item.amount, decimals);
       const assetType = item.asset_type as string;
+      decimalsByAsset.set(assetType, decimals);
       
       // Prefer exact APT mapping; treat known stables as $1 without CoinGecko
       const cgId = getCoinGeckoId(symbol, assetType) || (isStableUsd(symbol) ? 'STABLE_USD' : null);
@@ -123,6 +125,7 @@ serve(async (req) => {
     // - For STABLE_USD, SUM balances across USDC/USDT
     // - For other assets (e.g., APT), keep the LARGEST balance to avoid double-counting wrappers
     const aggregated = new Map<string, { symbol: string; balance: number; assetType: string; coinGeckoId: string }>();
+    const assetTypeById = new Map<string, string>();
     for (const t of rawTokenBalances) {
       const existing = aggregated.get(t.coinGeckoId);
       if (!existing) {
@@ -139,6 +142,9 @@ serve(async (req) => {
       balance: t.balance,
       coinGeckoId: t.coinGeckoId,
     }));
+    for (const t of aggregated.values()) {
+      assetTypeById.set(t.coinGeckoId, t.assetType);
+    }
 
     console.log(`Selected ${uniqueTokenBalances.length} tokens:`, uniqueTokenBalances.map(t => `${t.symbol}(${t.balance.toFixed(4)})`));
 
@@ -151,7 +157,7 @@ serve(async (req) => {
     }
 
     // Step 2: Fetch historical prices once per token and calculate portfolio values
-    const historicalData: HistoricalDataPoint[] = [];
+// historicalData will be built after flows aggregation
 
     // Build list of target dates (YYYY-MM-DD) over the range
     const dateList: string[] = [];
@@ -201,13 +207,113 @@ serve(async (req) => {
       priceMaps.map((p) => [p.id, p.prices])
     );
 
-    // For each date, sum current balances * historical price
-    for (const dateStr of dateList) {
+    // Build net flows per day per token (true historical balances)
+    // 1) Fetch on-chain activities within range
+    const activitiesQuery = `
+      query Activities($address: String!, $start: timestamp, $end: timestamp, $assetTypes: [String!]) {
+        coin_activities(
+          where: { owner_address: { _eq: $address }, transaction_timestamp: { _gte: $start, _lte: $end } }
+          order_by: { transaction_timestamp: asc }
+          limit: 10000
+        ) {
+          transaction_timestamp
+          amount
+          activity_type
+        }
+        fungible_asset_activities(
+          where: { owner_address: { _eq: $address }, transaction_timestamp: { _gte: $start, _lte: $end }, asset_type: { _in: $assetTypes } }
+          order_by: { transaction_timestamp: asc }
+          limit: 10000
+        ) {
+          transaction_timestamp
+          amount
+          asset_type
+        }
+      }
+    `;
+
+    // Build asset type list for tracked non-APT tokens (include all stables' asset types from raw balances)
+    const cgIdByAssetType = new Map<string, string>();
+    for (const t of rawTokenBalances) {
+      cgIdByAssetType.set(t.assetType, t.coinGeckoId);
+    }
+    const trackedFaaAssets = Array.from(new Set(
+      Array.from(cgIdByAssetType.entries())
+        .filter(([assetType, id]) => id !== 'aptos')
+        .map(([assetType]) => assetType)
+    ));
+
+    const startIso = new Date(startDate).toISOString();
+    const endIso = new Date(now).toISOString();
+
+    console.log('Fetching activities for range', startIso, '->', endIso, 'assets:', trackedFaaAssets.length);
+    const activitiesResp = await fetch(graphqlUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: activitiesQuery,
+        variables: { address, start: startIso, end: endIso, assetTypes: trackedFaaAssets }
+      })
+    });
+
+    if (!activitiesResp.ok) {
+      console.log('Activities fetch failed:', activitiesResp.status);
+    }
+
+    const activitiesData = activitiesResp.ok ? await activitiesResp.json() : { data: { coin_activities: [], fungible_asset_activities: [] } };
+
+    // 2) Aggregate flows per date and token id
+    const flowsByDateById = new Map<string, Map<string, number>>();
+    const addFlow = (dateStr: string, id: string, delta: number) => {
+      let m = flowsByDateById.get(dateStr);
+      if (!m) { m = new Map(); flowsByDateById.set(dateStr, m); }
+      m.set(id, (m.get(id) || 0) + delta);
+    };
+
+    // APT via coin_activities
+    const coinActs: Array<{ transaction_timestamp: string; amount: string; activity_type: string }> = activitiesData.data?.coin_activities || [];
+    for (const a of coinActs) {
+      const dateStr = (a.transaction_timestamp || '').split('T')[0];
+      const amtUnits = Number(formatUnits(a.amount, 8));
+      const sign = a.activity_type === 'deposit' ? 1 : -1;
+      addFlow(dateStr, 'aptos', sign * amtUnits);
+    }
+
+    // Other tokens via fungible_asset_activities (amount may be signed)
+    const faActs: Array<{ transaction_timestamp: string; amount: string; asset_type: string }> = activitiesData.data?.fungible_asset_activities || [];
+    for (const a of faActs) {
+      const dateStr = (a.transaction_timestamp || '').split('T')[0];
+      const assetType = String(a.asset_type || '');
+      const id = cgIdByAssetType.get(assetType);
+      if (!id) continue;
+      const decimals = decimalsByAsset.get(assetType) ?? 8;
+      const amtStr = String(a.amount ?? '0').trim();
+      const isNeg = amtStr.startsWith('-');
+      const rawAbs = isNeg ? amtStr.slice(1) : amtStr;
+      const units = Number(formatUnits(rawAbs, decimals));
+      addFlow(dateStr, id, (isNeg ? -1 : 1) * units);
+    }
+
+    // 3) Compute end-of-day balances per date using current balances and suffix sums of flows
+    const currentById = new Map<string, number>(uniqueTokenBalances.map(t => [t.coinGeckoId, t.balance]));
+
+    const historicalData: HistoricalDataPoint[] = [];
+    for (let i = 0; i < dateList.length; i++) {
+      const dateStr = dateList[i];
       let totalValue = 0;
-      for (const token of uniqueTokenBalances) {
-        const tokenPrices = priceLookup.get(token.coinGeckoId) || {};
+      for (const t of uniqueTokenBalances) {
+        const id = t.coinGeckoId;
+        // Sum flows after this day to subtract from current balance
+        let suffix = 0;
+        for (let j = i + 1; j < dateList.length; j++) {
+          const d = dateList[j];
+          const m = flowsByDateById.get(d);
+          if (m) suffix += (m.get(id) || 0);
+        }
+        const eodBalance = (currentById.get(id) || 0) - suffix;
+        const tokenPrices = priceLookup.get(id) || {};
         const price = tokenPrices[dateStr] ?? 0;
-        totalValue += token.balance * price;
+        totalValue += eodBalance * price;
       }
       historicalData.push({ date: dateStr, value: Math.round(totalValue * 100) / 100 });
       console.log(`✓ ${dateStr}: $${totalValue.toFixed(2)}`);
