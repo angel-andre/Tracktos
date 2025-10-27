@@ -144,55 +144,91 @@ serve(async (req) => {
       return out.replace(/0+$/, '').replace(/\.$/, '');
     };
 
-    // Helper to fetch USD prices from CoinGecko API
-    const fetchCoinPrices = async (symbols: string[]): Promise<Map<string, number>> => {
+    // Helper to fetch USD prices from multiple sources
+    const fetchCoinPrices = async (symbols: string[], assetTypes: Record<string, string>): Promise<Map<string, number>> => {
       const priceMap = new Map<string, number>();
       
-      // CoinGecko coin IDs for common Aptos tokens
+      // CoinGecko coin IDs for common tokens
       const coinGeckoIds: Record<string, string> = {
         'APT': 'aptos',
         'USDC': 'usd-coin',
         'USDT': 'tether',
         'WETH': 'weth',
         'BTC': 'bitcoin',
-        'SOL': 'solana'
+        'SOL': 'solana',
+        'GUI': 'gui-inu',
+        'CAKE': 'pancakeswap-token',
+        'WBTC': 'wrapped-bitcoin'
       };
 
+      // Try CoinGecko first for known tokens
       try {
         const idsToFetch = symbols
           .map(s => coinGeckoIds[s.toUpperCase()])
           .filter(Boolean);
 
-        if (idsToFetch.length === 0) {
-          console.log('No matching coin IDs found for symbols:', symbols);
-          return priceMap;
-        }
+        if (idsToFetch.length > 0) {
+          const ids = idsToFetch.join(',');
+          const coingeckoUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`;
+          
+          console.log('Fetching prices from CoinGecko for:', symbols.join(', '));
+          const response = await fetch(coingeckoUrl);
+          
+          if (response.ok) {
+            const data = await response.json();
+            console.log('CoinGecko response:', JSON.stringify(data));
 
-        // CoinGecko API endpoint for simple price
-        const ids = idsToFetch.join(',');
-        const coingeckoUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`;
-        
-        console.log('Fetching prices from CoinGecko:', coingeckoUrl);
-        const response = await fetch(coingeckoUrl);
-        
-        if (!response.ok) {
-          console.log('CoinGecko API error:', response.status, await response.text());
-          return priceMap;
-        }
-
-        const data = await response.json();
-        console.log('CoinGecko response:', JSON.stringify(data));
-
-        // Map prices back to symbols
-        for (const [symbol, coinId] of Object.entries(coinGeckoIds)) {
-          if (data[coinId]?.usd) {
-            const price = data[coinId].usd;
-            priceMap.set(symbol, price);
-            console.log(`✓ Price for ${symbol}: $${price}`);
+            for (const [symbol, coinId] of Object.entries(coinGeckoIds)) {
+              if (data[coinId]?.usd) {
+                const price = data[coinId].usd;
+                priceMap.set(symbol, price);
+                console.log(`✓ Price for ${symbol}: $${price}`);
+              }
+            }
           }
         }
       } catch (error) {
-        console.log('Error fetching CoinGecko prices:', error);
+        console.log('CoinGecko error:', error);
+      }
+
+      // For tokens not found in CoinGecko, try DexScreener
+      const missingTokens = symbols.filter(s => !priceMap.has(s.toUpperCase()));
+      
+      if (missingTokens.length > 0) {
+        console.log('Fetching prices from DexScreener for missing tokens:', missingTokens.join(', '));
+        
+        for (const symbol of missingTokens) {
+          const assetType = assetTypes[symbol];
+          if (!assetType) continue;
+
+          try {
+            // DexScreener API for Aptos tokens
+            const dexUrl = `https://api.dexscreener.com/latest/dex/search?q=${symbol}%20aptos`;
+            const response = await fetch(dexUrl);
+            
+            if (response.ok) {
+              const data = await response.json();
+              const pairs = data?.pairs || [];
+              
+              // Find the most liquid pair with this token
+              const aptPair = pairs.find((p: any) => 
+                p.chainId === 'aptos' && 
+                (p.baseToken?.symbol === symbol || p.quoteToken?.symbol === symbol) &&
+                p.priceUsd
+              );
+              
+              if (aptPair?.priceUsd) {
+                const price = parseFloat(aptPair.priceUsd);
+                priceMap.set(symbol.toUpperCase(), price);
+                console.log(`✓ Price for ${symbol} from DexScreener: $${price}`);
+              } else {
+                console.log(`⚠️ No price found for ${symbol} on DexScreener`);
+              }
+            }
+          } catch (error) {
+            console.log(`Error fetching DexScreener price for ${symbol}:`, error);
+          }
+        }
       }
 
       return priceMap;
@@ -202,6 +238,7 @@ serve(async (req) => {
     let aptRaw = 0n;
     let aptBalance = '0';
     const tokens: Array<{ name: string; symbol: string; balance: string }> = [];
+    const tokenAssetTypes: Record<string, string> = {};
 
     if (data.current_fungible_asset_balances) {
       for (const fa of data.current_fungible_asset_balances) {
@@ -222,6 +259,7 @@ serve(async (req) => {
             aptRaw += raw;
           } else {
             tokens.push({ name, symbol, balance });
+            tokenAssetTypes[symbol] = assetType;
             console.log('✓ FA:', symbol, balance);
           }
         }
@@ -384,9 +422,10 @@ serve(async (req) => {
     }
 
     // Fetch USD prices for all tokens
-    console.log('Fetching USD prices from CoinGecko...');
+    console.log('Fetching USD prices...');
     const tokenSymbols = ['APT', ...tokens.map(t => t.symbol)];
-    const priceMap = await fetchCoinPrices(tokenSymbols);
+    const allAssetTypes = { ...tokenAssetTypes, 'APT': '0x1::aptos_coin::AptosCoin' };
+    const priceMap = await fetchCoinPrices(tokenSymbols, allAssetTypes);
     
     // Token logo URLs (common Aptos tokens)
     const logoUrls: Record<string, string> = {
