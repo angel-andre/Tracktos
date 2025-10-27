@@ -39,6 +39,8 @@ interface AptosResponse {
   totalNftCount: number;
   totalTransactionCount: number;
   totalUsdValue: number;
+  sentimentScore: number;
+  sentimentReasons: string[];
 }
 
 serve(async (req) => {
@@ -1017,6 +1019,70 @@ serve(async (req) => {
       return priceB - priceA;
     });
 
+    // ==================== Sentiment Calculation Algorithm ====================
+    console.log('Calculating sentiment score...');
+    const sentimentReasons: string[] = [];
+    let sentimentScore = 50; // Base score
+
+    // Factor 1: Transaction Volume
+    const txPoints = Math.min(totalTransactionCount / 100, 20); // Max 20 points
+    sentimentScore += txPoints;
+    if (totalTransactionCount > 500) {
+      sentimentReasons.push('Very high transaction activity');
+    } else if (totalTransactionCount > 100) {
+      sentimentReasons.push('High transaction activity');
+    } else if (totalTransactionCount < 10) {
+      sentimentReasons.push('Low transaction history');
+    }
+
+    // Factor 2: NFT Holdings
+    const nftPoints = Math.min(totalNftCount / 10, 15); // Max 15 points
+    sentimentScore += nftPoints;
+    if (totalNftCount > 50) {
+      sentimentReasons.push('Large NFT collection');
+    } else if (totalNftCount > 20) {
+      sentimentReasons.push('Active NFT collector');
+    } else if (totalNftCount === 0) {
+      sentimentReasons.push('No NFT holdings');
+    }
+
+    // Factor 3: Token Diversity
+    const tokenDiversityPoints = Math.min(topTokens.length * 2, 10); // Max 10 points
+    sentimentScore += tokenDiversityPoints;
+    if (topTokens.length > 5) {
+      sentimentReasons.push('Diverse portfolio');
+    } else if (topTokens.length === 0) {
+      sentimentReasons.push('No token diversity');
+    }
+
+    // Factor 4: Staking Behavior
+    const stakedAptValue = parseFloat(stakedApt) || 0;
+    const stakingPoints = Math.min(stakedAptValue / 10, 15); // Max 15 points
+    sentimentScore += stakingPoints;
+    if (stakedAptValue > 100) {
+      sentimentReasons.push('High staking activity');
+    } else if (stakedAptValue > 10) {
+      sentimentReasons.push('Active staker');
+    } else if (stakedAptValue === 0) {
+      sentimentReasons.push('No staked APT');
+    }
+
+    // Factor 5: Portfolio Value
+    const valuePoints = Math.min(totalUsdValue / 100, 10); // Max 10 points
+    sentimentScore += valuePoints;
+    if (totalUsdValue > 10000) {
+      sentimentReasons.push('High portfolio value');
+    } else if (totalUsdValue > 1000) {
+      sentimentReasons.push('Moderate portfolio value');
+    } else if (totalUsdValue < 100) {
+      sentimentReasons.push('Low portfolio value');
+    }
+
+    // Cap sentiment score at 100
+    sentimentScore = Math.min(Math.round(sentimentScore), 100);
+    console.log(`✓ Sentiment score: ${sentimentScore}/100 with ${sentimentReasons.length} reasons`);
+    // ==================== End Sentiment Calculation ====================
+
     const response: AptosResponse = {
       account: {
         address,
@@ -1032,7 +1098,9 @@ serve(async (req) => {
       activity,
       totalNftCount,
       totalTransactionCount,
-      totalUsdValue
+      totalUsdValue,
+      sentimentScore,
+      sentimentReasons
     };
 
     console.log('Returning:', {
