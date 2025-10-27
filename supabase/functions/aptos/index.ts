@@ -1024,58 +1024,88 @@ serve(async (req) => {
     const sentimentReasons: string[] = [];
     let sentimentScore = 50; // Base score
 
-    // Factor 1: Transaction Volume
+    // Factor 1: Transaction Volume (more nuanced thresholds)
     const txPoints = Math.min(totalTransactionCount / 100, 20); // Max 20 points
     sentimentScore += txPoints;
-    if (totalTransactionCount > 500) {
+    if (totalTransactionCount > 1000) {
+      sentimentReasons.push('Exceptionally high transaction activity');
+    } else if (totalTransactionCount > 500) {
       sentimentReasons.push('Very high transaction activity');
-    } else if (totalTransactionCount > 100) {
+    } else if (totalTransactionCount > 200) {
       sentimentReasons.push('High transaction activity');
-    } else if (totalTransactionCount < 10) {
+    } else if (totalTransactionCount > 50) {
+      sentimentReasons.push('Moderate transaction activity');
+    } else if (totalTransactionCount > 10) {
       sentimentReasons.push('Low transaction history');
+    } else {
+      sentimentReasons.push('Very low transaction history');
     }
 
-    // Factor 2: NFT Holdings
+    // Factor 2: NFT Holdings (more nuanced thresholds)
     const nftPoints = Math.min(totalNftCount / 10, 15); // Max 15 points
     sentimentScore += nftPoints;
-    if (totalNftCount > 50) {
+    if (totalNftCount > 100) {
+      sentimentReasons.push('Exceptional NFT collector');
+    } else if (totalNftCount > 50) {
       sentimentReasons.push('Large NFT collection');
     } else if (totalNftCount > 20) {
       sentimentReasons.push('Active NFT collector');
-    } else if (totalNftCount === 0) {
+    } else if (totalNftCount > 5) {
+      sentimentReasons.push('Moderate NFT holdings');
+    } else if (totalNftCount > 0) {
+      sentimentReasons.push('Small NFT collection');
+    } else {
       sentimentReasons.push('No NFT holdings');
     }
 
-    // Factor 3: Token Diversity
+    // Factor 3: Token Diversity (more nuanced thresholds)
     const tokenDiversityPoints = Math.min(topTokens.length * 2, 10); // Max 10 points
     sentimentScore += tokenDiversityPoints;
-    if (topTokens.length > 5) {
-      sentimentReasons.push('Diverse portfolio');
-    } else if (topTokens.length === 0) {
+    if (topTokens.length > 10) {
+      sentimentReasons.push('Highly diverse portfolio');
+    } else if (topTokens.length > 5) {
+      sentimentReasons.push('Well-diversified portfolio');
+    } else if (topTokens.length > 2) {
+      sentimentReasons.push('Moderately diverse portfolio');
+    } else if (topTokens.length > 0) {
+      sentimentReasons.push('Limited token diversity');
+    } else {
       sentimentReasons.push('No token diversity');
     }
 
-    // Factor 4: Staking Behavior
+    // Factor 4: Staking Behavior (more nuanced thresholds)
     const stakedAptValue = parseFloat(stakedApt) || 0;
     const stakingPoints = Math.min(stakedAptValue / 10, 15); // Max 15 points
     sentimentScore += stakingPoints;
-    if (stakedAptValue > 100) {
+    if (stakedAptValue > 1000) {
+      sentimentReasons.push('Very high staking activity');
+    } else if (stakedAptValue > 100) {
       sentimentReasons.push('High staking activity');
     } else if (stakedAptValue > 10) {
-      sentimentReasons.push('Active staker');
-    } else if (stakedAptValue === 0) {
+      sentimentReasons.push('Moderate staking activity');
+    } else if (stakedAptValue > 0) {
+      sentimentReasons.push('Low staking activity');
+    } else {
       sentimentReasons.push('No staked APT');
     }
 
-    // Factor 5: Portfolio Value
+    // Factor 5: Portfolio Value (more realistic thresholds)
     const valuePoints = Math.min(totalUsdValue / 100, 10); // Max 10 points
     sentimentScore += valuePoints;
-    if (totalUsdValue > 10000) {
+    if (totalUsdValue > 100000) {
+      sentimentReasons.push('Exceptional portfolio value');
+    } else if (totalUsdValue > 50000) {
+      sentimentReasons.push('Very high portfolio value');
+    } else if (totalUsdValue > 10000) {
       sentimentReasons.push('High portfolio value');
+    } else if (totalUsdValue > 4000) {
+      sentimentReasons.push('Moderate-high portfolio value');
     } else if (totalUsdValue > 1000) {
       sentimentReasons.push('Moderate portfolio value');
-    } else if (totalUsdValue < 100) {
+    } else if (totalUsdValue > 100) {
       sentimentReasons.push('Low portfolio value');
+    } else {
+      sentimentReasons.push('Very low portfolio value');
     }
 
     // Cap sentiment score at 100
