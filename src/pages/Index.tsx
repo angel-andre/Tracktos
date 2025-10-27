@@ -201,13 +201,13 @@ export default function IndexPage() {
         {/* Dashboard Tabs */}
         {(data || loading) && (
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="tokens">Tokens</TabsTrigger>
-              <TabsTrigger value="nfts">NFTs</TabsTrigger>
-              <TabsTrigger value="activity">Activity</TabsTrigger>
-              <TabsTrigger value="defi">DeFi</TabsTrigger>
-              <TabsTrigger value="identity">Identity</TabsTrigger>
+            <TabsList className="inline-flex h-auto w-full flex-wrap justify-start gap-2 bg-muted/50 p-2">
+              <TabsTrigger value="overview" className="flex-1 min-w-[100px]">Overview</TabsTrigger>
+              <TabsTrigger value="tokens" className="flex-1 min-w-[100px]">Tokens</TabsTrigger>
+              <TabsTrigger value="nfts" className="flex-1 min-w-[100px]">NFTs</TabsTrigger>
+              <TabsTrigger value="activity" className="flex-1 min-w-[100px]">Activity</TabsTrigger>
+              <TabsTrigger value="defi" className="flex-1 min-w-[100px]">DeFi</TabsTrigger>
+              <TabsTrigger value="identity" className="flex-1 min-w-[100px]">Identity</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
