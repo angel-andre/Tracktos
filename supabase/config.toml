@@ -2,3 +2,6 @@ project_id = "eetgkzhpmcabxygqnjda"
 
 [functions.aptos]
 verify_jwt = false
+
+[functions.portfolio-history]
+verify_jwt = false
