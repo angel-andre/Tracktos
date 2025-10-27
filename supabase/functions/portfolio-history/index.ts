@@ -404,11 +404,15 @@ serve(async (req) => {
         }
       }
 
+      const gotLive = nowPrices.size > 0;
+
       let snapshot = 0;
       for (const id of tracked) {
         const bal = currentById.get(id) || 0;
         if (!bal) continue;
-        const price = id === 'STABLE_USD' ? 1 : (nowPrices.get(id) ?? 0);
+        const price = id === 'STABLE_USD'
+          ? 1
+          : (gotLive ? (nowPrices.get(id) ?? 0) : getPriceFor(id, dateList.length - 1));
         snapshot += bal * price;
       }
       snapshot = Math.round(snapshot * 100) / 100;
@@ -417,14 +421,22 @@ serve(async (req) => {
       if (historicalData.length) {
         const lastIdx = historicalData.length - 1;
         if (historicalData[lastIdx].date === todayStr) {
-          historicalData[lastIdx].value = snapshot;
+          // Only override today's value if we successfully fetched live prices.
+          if (gotLive) {
+            historicalData[lastIdx].value = snapshot;
+            console.log(`Updated live snapshot for ${todayStr} with real-time prices: $${snapshot.toFixed(2)}`);
+          } else {
+            console.log(`Kept computed value for ${todayStr}; live prices unavailable, used historical fallback in calculation.`);
+          }
         } else {
+          // If today isn't present, append using best available (live or historical fallback)
           historicalData.push({ date: todayStr, value: snapshot });
+          console.log(`Appended snapshot for ${todayStr} using ${gotLive ? 'real-time' : 'historical fallback'} prices: $${snapshot.toFixed(2)}`);
         }
       } else {
         historicalData.push({ date: todayStr, value: snapshot });
+        console.log(`Initialized first snapshot for ${todayStr}: $${snapshot.toFixed(2)}`);
       }
-      console.log(`Appended/updated live snapshot for ${todayStr}: $${snapshot.toFixed(2)}`);
     } catch (e) {
       console.log('Failed to append live snapshot:', e);
     }
