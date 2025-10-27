@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AccountCard } from "@/components/dashboard/AccountCard";
 import { TokensCard } from "@/components/dashboard/TokensCard";
 import { ActivityCard } from "@/components/dashboard/ActivityCard";
@@ -197,65 +198,78 @@ export default function IndexPage() {
           )}
         </div>
 
-        {/* Dashboard Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Wallet Identity Card - spans 2 columns */}
-          <div className="lg:col-span-2">
-            <WalletIdentityCard
-              data={data?.walletIdentity || null}
-              loading={loading}
-              walletAge={data?.account?.firstTransactionTimestamp}
-              transactionCount={data?.totalTransactionCount || 0}
-            />
-          </div>
+        {/* Dashboard Tabs */}
+        {(data || loading) && (
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="tokens">Tokens</TabsTrigger>
+              <TabsTrigger value="nfts">NFTs</TabsTrigger>
+              <TabsTrigger value="activity">Activity</TabsTrigger>
+              <TabsTrigger value="defi">DeFi</TabsTrigger>
+              <TabsTrigger value="identity">Identity</TabsTrigger>
+            </TabsList>
 
-          {/* Transaction Analytics Card - spans 2 columns */}
-          {data?.transactionAnalytics && (
-            <div className="lg:col-span-2">
-              <TransactionAnalyticsCard analytics={data.transactionAnalytics} />
-            </div>
-          )}
+            <TabsContent value="overview" className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <AccountCard 
+                  data={data?.account || null} 
+                  loading={loading}
+                  transactionCount={data?.totalTransactionCount || 0}
+                  nftCount={data?.totalNftCount || 0}
+                  tokenCount={data?.tokens?.length || 0}
+                  sentimentReasons={data?.sentimentReasons || []}
+                />
+                <div className="space-y-6">
+                  <ActivityCard activity={data?.activity || null} loading={loading} />
+                </div>
+              </div>
+              {data && (
+                <PortfolioChartCard address={address} currentTotalUsdValue={data.totalUsdValue} />
+              )}
+            </TabsContent>
 
-          {/* DeFi Activity Card - spans 2 columns */}
-          {data?.defiActivity && (
-            <div className="lg:col-span-2">
-              <DeFiActivityCard defiActivity={data.defiActivity} />
-            </div>
-          )}
+            <TabsContent value="tokens" className="space-y-6">
+              <TokensCard 
+                tokens={data?.tokens || null} 
+                totalUsdValue={data?.totalUsdValue || 0}
+                loading={loading} 
+              />
+            </TabsContent>
 
-          <div className="space-y-6">
-            <AccountCard 
-              data={data?.account || null} 
-              loading={loading}
-              transactionCount={data?.totalTransactionCount || 0}
-              nftCount={data?.totalNftCount || 0}
-              tokenCount={data?.tokens?.length || 0}
-              sentimentReasons={data?.sentimentReasons || []}
-            />
-            <TokensCard 
-              tokens={data?.tokens || null} 
-              totalUsdValue={data?.totalUsdValue || 0}
-              loading={loading} 
-            />
-          </div>
-          
-          <div className="space-y-6">
-            <ActivityCard activity={data?.activity || null} loading={loading} />
-          </div>
+            <TabsContent value="nfts" className="space-y-6">
+              <PremiumNFTsCard nfts={data?.nfts || null} loading={loading} />
+              <NFTsCard nfts={data?.nfts || null} loading={loading} />
+            </TabsContent>
 
-          {/* Portfolio History Chart - spans 2 columns on large screens */}
-          {data && (
-            <div className="lg:col-span-2">
-              <PortfolioChartCard address={address} currentTotalUsdValue={data.totalUsdValue} />
-            </div>
-          )}
-        </div>
+            <TabsContent value="activity" className="space-y-6">
+              <ActivityCard activity={data?.activity || null} loading={loading} />
+              {data?.transactionAnalytics && (
+                <TransactionAnalyticsCard analytics={data.transactionAnalytics} />
+              )}
+            </TabsContent>
 
-        {/* Featured NFTs Section */}
-        <PremiumNFTsCard nfts={data?.nfts || null} loading={loading} />
+            <TabsContent value="defi" className="space-y-6">
+              {data?.defiActivity && (
+                <DeFiActivityCard defiActivity={data.defiActivity} />
+              )}
+              {!data?.defiActivity && !loading && (
+                <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl p-8 text-center">
+                  <p className="text-muted-foreground">No DeFi activity found for this wallet</p>
+                </div>
+              )}
+            </TabsContent>
 
-        {/* Full Width NFT Section */}
-        <NFTsCard nfts={data?.nfts || null} loading={loading} />
+            <TabsContent value="identity" className="space-y-6">
+              <WalletIdentityCard
+                data={data?.walletIdentity || null}
+                loading={loading}
+                walletAge={data?.account?.firstTransactionTimestamp}
+                transactionCount={data?.totalTransactionCount || 0}
+              />
+            </TabsContent>
+          </Tabs>
+        )}
       </div>
     </div>
   );
