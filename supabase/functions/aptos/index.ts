@@ -669,13 +669,34 @@ serve(async (req) => {
     let activeDays = 0;
     let totalGasSpent = '0';
     
-    // Fetch more transactions to find NFT purchases (limit increased for better coverage)
-    const txUrl = `${fullnodeBase}/accounts/${address}/transactions?limit=500`;
-    const txResp = await fetch(txUrl, { headers: { 'Accept': 'application/json' } });
+    // Fetch transactions for analysis (pagination to get more complete data)
+    let transactions: any[] = [];
+    let offset = 0;
+    const batchSize = 100;
+    const maxTransactionsToFetch = Math.min(totalTransactionCount, 10000); // Fetch up to 10k for accuracy
+    
+    console.log(`Fetching up to ${maxTransactionsToFetch} transactions for analysis...`);
+    
+    while (offset < maxTransactionsToFetch) {
+      const txUrl = `${fullnodeBase}/accounts/${address}/transactions?start=${offset}&limit=${batchSize}`;
+      const txResp = await fetch(txUrl, { headers: { 'Accept': 'application/json' } });
+      
+      if (!txResp.ok) break;
+      
+      const txData = await txResp.json();
+      if (!Array.isArray(txData) || txData.length === 0) break;
+      
+      transactions.push(...txData);
+      offset += batchSize;
+      
+      if (txData.length < batchSize) break; // No more transactions
+    }
+    
+    console.log(`✓ Fetched ${transactions.length} transactions for analysis`);
     
     let activity: Array<{ hash: string; type: string; success: boolean; timestamp: string }> = [];
-    if (txResp.ok) {
-      const transactions = await txResp.json();
+    
+    if (transactions.length > 0) {
       
       // Parse transactions for NFT purchases
       for (const tx of transactions) {
@@ -808,8 +829,6 @@ serve(async (req) => {
       activeDays = uniqueDates.size;
       totalGasSpent = formatUnits(String(totalGasInOctas), 8);
       
-      console.log(`✓ Active days: ${activeDays}, Total gas: ${totalGasSpent} APT`);
-      
       // Compute accurate first/last transaction timestamps via dedicated queries
       try {
         const oldestResp = await fetch(`${fullnodeBase}/accounts/${address}/transactions?start=0&limit=1`, {
@@ -865,6 +884,8 @@ serve(async (req) => {
       console.log('✓ Recent transactions fetched:', activity.length);
       console.log('✓ NFT prices found:', nftPriceMap.size, 'byTokenId:', matchedByTokenId, 'byNameCollection:', matchedByNameCollection);
     }
+    
+    console.log(`✓ Active days: ${activeDays}, Total gas: ${totalGasSpent} APT from ${transactions.length} transactions analyzed`);
 
     // Targeted enrichment: compute purchase prices for the NFTs we currently show (by token_data_id)
     try {
