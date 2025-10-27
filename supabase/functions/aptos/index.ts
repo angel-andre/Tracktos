@@ -20,6 +20,8 @@ interface AptosResponse {
     name: string;
     collection: string;
     image: string;
+    price?: string;
+    purchaseHash?: string;
   }>;
   activity: Array<{
     hash: string;
@@ -250,7 +252,7 @@ serve(async (req) => {
     }
 
     // Parse NFTs with CDN and metadata fallback
-    const nfts: Array<{ name: string; collection: string; image: string }> = [];
+    const nfts: Array<{ name: string; collection: string; image: string; tokenDataId?: string }> = [];
 
     const looksLikeImageUrl = (u: string) => /\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(u);
     const resolveIpfs = (u: string) => {
@@ -310,7 +312,12 @@ serve(async (req) => {
 
           image = resolveIpfs(image);
           image = normalizeGateway(image);
-          nfts.push({ name, collection, image });
+          nfts.push({ 
+            name, 
+            collection, 
+            image,
+            tokenDataId: nft.token_data_id 
+          });
           console.log('✓ NFT:', name, 'img:', image?.slice(0, 100));
         }
       }
@@ -344,21 +351,102 @@ serve(async (req) => {
       console.log('Failed to fetch total transaction count:', e);
     }
 
-    // Fetch recent transactions for display
-    const txUrl = `${fullnodeBase}/accounts/${address}/transactions?limit=5`;
+    // Parse NFT purchase prices from transaction history
+    console.log('Parsing NFT purchase prices...');
+    const nftPriceMap = new Map<string, { price: string; hash: string }>();
+    
+    // Fetch more transactions to find NFT purchases (limit 100 for performance)
+    const txUrl = `${fullnodeBase}/accounts/${address}/transactions?limit=100`;
     const txResp = await fetch(txUrl, { headers: { 'Accept': 'application/json' } });
     
     let activity: Array<{ hash: string; type: string; success: boolean; timestamp: string }> = [];
     if (txResp.ok) {
       const transactions = await txResp.json();
-      activity = transactions.map((tx: any) => ({
+      
+      // Parse transactions for NFT purchases
+      for (const tx of transactions) {
+        if (!tx.success || tx.type !== 'user_transaction') continue;
+        
+        const payload = tx.payload;
+        const events = tx.events || [];
+        
+        // Look for common NFT marketplace functions and minting functions
+        const isNftTransaction = payload?.function?.includes('token') || 
+                                 payload?.function?.includes('nft') ||
+                                 payload?.function?.includes('mint') ||
+                                 payload?.function?.includes('buy') ||
+                                 payload?.function?.includes('purchase');
+        
+        if (isNftTransaction) {
+          let priceInOctas = '0';
+          let tokenId = '';
+          
+          // Extract price from events (look for coin withdraw/deposit events)
+          for (const event of events) {
+            const eventType = event.type || '';
+            
+            // Look for coin withdrawal (payment)
+            if (eventType.includes('WithdrawEvent') || eventType.includes('0x1::coin::WithdrawEvent')) {
+              priceInOctas = event.data?.amount || '0';
+            }
+            
+            // Look for token/NFT events to get token ID
+            if (eventType.includes('MintTokenEvent') || 
+                eventType.includes('BuyEvent') ||
+                eventType.includes('TokenDepositEvent') ||
+                eventType.includes('DepositEvent')) {
+              tokenId = event.data?.token_id || event.data?.id?.token_data_id || '';
+            }
+          }
+          
+          // Also check payload arguments for price
+          if (payload?.arguments && Array.isArray(payload.arguments)) {
+            for (const arg of payload.arguments) {
+              // Price is usually a large number in arguments
+              if (typeof arg === 'string' && /^\d{6,}$/.test(arg)) {
+                priceInOctas = arg;
+              }
+            }
+          }
+          
+          // Convert octas to APT (1 APT = 100000000 octas)
+          if (priceInOctas !== '0' && tokenId) {
+            const priceApt = formatUnits(priceInOctas, 8);
+            nftPriceMap.set(tokenId, { price: priceApt, hash: tx.hash });
+            console.log(`✓ NFT purchase: ${priceApt} APT (token: ${tokenId.slice(0, 20)}...)`);
+          }
+        }
+      }
+      
+      // Get recent transactions for activity display (only last 5)
+      activity = transactions.slice(0, 5).map((tx: any) => ({
         hash: tx.hash || 'unknown',
         type: tx.type || 'unknown',
         success: tx.success !== false,
         timestamp: tx.timestamp || new Date().toISOString()
       }));
       console.log('✓ Recent transactions fetched:', activity.length);
+      console.log('✓ NFT prices found:', nftPriceMap.size);
     }
+    
+    // Match NFT prices to owned NFTs
+    const nftsWithPrices = nfts.map(nft => {
+      const priceData = nft.tokenDataId ? nftPriceMap.get(nft.tokenDataId) : null;
+      return {
+        name: nft.name,
+        collection: nft.collection,
+        image: nft.image,
+        price: priceData?.price,
+        purchaseHash: priceData?.hash
+      };
+    });
+    
+    // Sort NFTs by price (most expensive first) for those with prices
+    const sortedNfts = [...nftsWithPrices].sort((a, b) => {
+      const priceA = a.price ? parseFloat(a.price) : -1;
+      const priceB = b.price ? parseFloat(b.price) : -1;
+      return priceB - priceA;
+    });
 
     const response: AptosResponse = {
       account: {
@@ -367,7 +455,7 @@ serve(async (req) => {
         stakedApt
       },
       tokens: topTokens,
-      nfts: nfts.slice(0, 10),
+      nfts: sortedNfts.slice(0, 10),
       activity,
       totalNftCount,
       totalTransactionCount

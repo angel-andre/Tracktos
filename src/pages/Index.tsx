@@ -26,6 +26,8 @@ interface NFT {
   name: string;
   collection: string;
   image: string;
+  price?: string;
+  purchaseHash?: string;
 }
 
 interface Transaction {
