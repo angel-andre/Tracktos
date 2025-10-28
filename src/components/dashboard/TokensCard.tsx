@@ -1,4 +1,6 @@
 import { Coins } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatNumber } from "@/lib/formatters";
@@ -53,10 +55,26 @@ export function TokensCard({ tokens, totalUsdValue, loading }: TokensCardProps) 
     );
   }
 
-  const chartData = tokens?.map((token) => ({
+  const chartData = (tokens ?? []).map((token) => ({
     name: token.symbol,
     value: token.usdValue,
-  })) || [];
+  }));
+
+  // Pagination: 20 tokens per page, show all tokens across pages
+  const ITEMS_PER_PAGE = 20;
+  const totalPages = Math.max(1, Math.ceil((tokens?.length ?? 0) / ITEMS_PER_PAGE));
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    // Reset to first page when new token set arrives
+    setCurrentPage(1);
+  }, [tokens?.length]);
+
+  const paginatedTokens = useMemo(() => {
+    if (!tokens) return [] as Token[];
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return tokens.slice(start, start + ITEMS_PER_PAGE);
+  }, [tokens, currentPage]);
 
   return (
     <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg hover:shadow-xl transition-all duration-300">
@@ -111,7 +129,7 @@ export function TokensCard({ tokens, totalUsdValue, loading }: TokensCardProps) 
 
             {/* Token List - Right Side */}
             <div className="space-y-2">
-              {tokens.map((token, idx) => (
+              {paginatedTokens.map((token, idx) => (
                 <div 
                   key={idx} 
                   className="flex justify-between items-start p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-all duration-200 border border-border/30"
@@ -142,6 +160,19 @@ export function TokensCard({ tokens, totalUsdValue, loading }: TokensCardProps) 
                   </div>
                 </div>
               ))}
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4">
+                  <p className="text-xs text-muted-foreground">Page {currentPage} of {totalPages}</p>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>First</Button>
+                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}>Prev</Button>
+                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages}>Next</Button>
+                    <Button variant="outline" size="sm" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}>Last</Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : (
