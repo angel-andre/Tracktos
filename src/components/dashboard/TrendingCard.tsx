@@ -2,93 +2,68 @@ import { TrendingUp, Users, Image as ImageIcon, ExternalLink } from "lucide-reac
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatCompactNumber } from "@/lib/formatters";
+import { supabase } from "@/integrations/supabase/client";
+import { useEffect, useState } from "react";
 
 interface TrendingWallet {
   address: string;
-  label?: string;
-  totalValue: number;
-  change24h: number;
+  aptBalance: string;
   nftCount: number;
 }
 
 interface PopularCollection {
-  name: string;
-  floorPrice: number;
-  volume24h: number;
-  change24h: number;
-  itemCount: number;
-  imageUrl?: string;
+  collection_name: string;
+  creator_address: string;
+  current_supply: number;
+  max_supply: string;
+  total_minted_v2: number;
 }
 
 interface TrendingCardProps {
   network?: "mainnet" | "testnet";
 }
 
-// Sample trending data - in production, this would come from an API
-const TRENDING_WALLETS: TrendingWallet[] = [
-  {
-    address: "0x632dad777e05538c1ce47fad67ad801d242b481e45adfbc058a45e59851c3907",
-    label: "Whale Collector",
-    totalValue: 125000,
-    change24h: 12.5,
-    nftCount: 342,
-  },
-  {
-    address: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-    label: "DeFi Master",
-    totalValue: 98500,
-    change24h: 8.3,
-    nftCount: 156,
-  },
-  {
-    address: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-    label: "NFT Enthusiast",
-    totalValue: 87200,
-    change24h: -3.2,
-    nftCount: 523,
-  },
-  {
-    address: "0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba",
-    label: "Staking Pro",
-    totalValue: 76400,
-    change24h: 15.7,
-    nftCount: 89,
-  },
-];
-
-const POPULAR_COLLECTIONS: PopularCollection[] = [
-  {
-    name: "Aptos Monkeys",
-    floorPrice: 45.5,
-    volume24h: 12500,
-    change24h: 23.4,
-    itemCount: 8888,
-  },
-  {
-    name: "Aptomingos",
-    floorPrice: 32.8,
-    volume24h: 9800,
-    change24h: 15.2,
-    itemCount: 7777,
-  },
-  {
-    name: "Bruh Bears",
-    floorPrice: 28.3,
-    volume24h: 7600,
-    change24h: -5.1,
-    itemCount: 10000,
-  },
-  {
-    name: "Aptos Punks",
-    floorPrice: 52.1,
-    volume24h: 15200,
-    change24h: 31.8,
-    itemCount: 5000,
-  },
-];
-
 export function TrendingCard({ network = "mainnet" }: TrendingCardProps) {
+  const [wallets, setWallets] = useState<TrendingWallet[]>([]);
+  const [collections, setCollections] = useState<PopularCollection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchTrendingData = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        // Fetch trending wallets
+        const { data: walletsData, error: walletsError } = await supabase.functions.invoke('trending-data', {
+          body: { network, type: 'wallets' }
+        });
+
+        if (walletsError) throw walletsError;
+        if (walletsData?.wallets) setWallets(walletsData.wallets);
+
+        // Fetch trending collections
+        const { data: collectionsData, error: collectionsError } = await supabase.functions.invoke('trending-data', {
+          body: { network, type: 'collections' }
+        });
+
+        if (collectionsError) throw collectionsError;
+        if (collectionsData?.collections) setCollections(collectionsData.collections);
+
+      } catch (err) {
+        console.error('Error fetching trending data:', err);
+        setError('Failed to load trending data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTrendingData();
+  }, [network]);
+
   const handleWalletClick = (address: string) => {
     const url = new URL(window.location.href);
     url.searchParams.set('address', address);
@@ -120,97 +95,96 @@ export function TrendingCard({ network = "mainnet" }: TrendingCardProps) {
           </TabsList>
           
           <TabsContent value="wallets" className="space-y-2">
-            {TRENDING_WALLETS.map((wallet, idx) => (
-              <div
-                key={idx}
-                onClick={() => handleWalletClick(wallet.address)}
-                className="p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-all duration-200 border border-border/30 cursor-pointer group"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="outline" className="text-xs">
-                        #{idx + 1}
-                      </Badge>
-                      {wallet.label && (
-                        <p className="text-sm font-semibold text-foreground">
-                          {wallet.label}
-                        </p>
-                      )}
+            {loading ? (
+              Array(4).fill(0).map((_, i) => (
+                <Skeleton key={i} className="h-24 w-full" />
+              ))
+            ) : error ? (
+              <p className="text-center text-muted-foreground py-8">{error}</p>
+            ) : wallets.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No trending wallets found</p>
+            ) : (
+              wallets.map((wallet, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => handleWalletClick(wallet.address)}
+                  className="p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-all duration-200 border border-border/30 cursor-pointer group"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant="outline" className="text-xs">
+                          #{idx + 1}
+                        </Badge>
+                      </div>
+                      <p className="font-mono text-xs text-muted-foreground truncate group-hover:text-primary transition-colors">
+                        {wallet.address.slice(0, 12)}...{wallet.address.slice(-8)}
+                      </p>
                     </div>
-                    <p className="font-mono text-xs text-muted-foreground truncate group-hover:text-primary transition-colors">
-                      {wallet.address.slice(0, 12)}...{wallet.address.slice(-8)}
-                    </p>
+                    <ExternalLink className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
-                  <ExternalLink className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-                
-                <div className="flex items-center justify-between text-xs">
-                  <div>
-                    <p className="text-foreground font-semibold">
-                      ${formatCompactNumber(wallet.totalValue)}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {wallet.nftCount} NFTs
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className={`font-medium ${
-                      wallet.change24h >= 0 ? 'text-primary' : 'text-destructive'
-                    }`}>
-                      {wallet.change24h >= 0 ? '+' : ''}{wallet.change24h.toFixed(1)}%
-                    </p>
-                    <p className="text-muted-foreground">24h</p>
+                  
+                  <div className="flex items-center justify-between text-xs">
+                    <div>
+                      <p className="text-foreground font-semibold">
+                        {formatCompactNumber(parseFloat(wallet.aptBalance) / 100000000)} APT
+                      </p>
+                      <p className="text-muted-foreground">
+                        {wallet.nftCount} NFTs
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </TabsContent>
           
           <TabsContent value="collections" className="space-y-2">
-            {POPULAR_COLLECTIONS.map((collection, idx) => (
-              <div
-                key={idx}
-                className="p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-all duration-200 border border-border/30"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">
-                      #{idx + 1}
-                    </Badge>
-                    <p className="text-sm font-semibold text-foreground">
-                      {collection.name}
-                    </p>
+            {loading ? (
+              Array(4).fill(0).map((_, i) => (
+                <Skeleton key={i} className="h-24 w-full" />
+              ))
+            ) : error ? (
+              <p className="text-center text-muted-foreground py-8">{error}</p>
+            ) : collections.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No trending collections found</p>
+            ) : (
+              collections.map((collection, idx) => (
+                <div
+                  key={idx}
+                  className="p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-all duration-200 border border-border/30"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        #{idx + 1}
+                      </Badge>
+                      <p className="text-sm font-semibold text-foreground truncate">
+                        {collection.collection_name}
+                      </p>
+                    </div>
                   </div>
-                  <p className={`text-xs font-medium ${
-                    collection.change24h >= 0 ? 'text-primary' : 'text-destructive'
-                  }`}>
-                    {collection.change24h >= 0 ? '+' : ''}{collection.change24h.toFixed(1)}%
+                  
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <p className="text-muted-foreground">Supply</p>
+                      <p className="text-foreground font-semibold">
+                        {formatCompactNumber(collection.current_supply)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Max Supply</p>
+                      <p className="text-foreground font-semibold">
+                        {formatCompactNumber(parseInt(collection.max_supply || "0"))}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2 truncate font-mono">
+                    {collection.creator_address.slice(0, 12)}...{collection.creator_address.slice(-8)}
                   </p>
                 </div>
-                
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div>
-                    <p className="text-muted-foreground">Floor</p>
-                    <p className="text-foreground font-semibold">
-                      {collection.floorPrice} APT
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Volume</p>
-                    <p className="text-foreground font-semibold">
-                      ${formatCompactNumber(collection.volume24h)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Items</p>
-                    <p className="text-foreground font-semibold">
-                      {formatCompactNumber(collection.itemCount)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </TabsContent>
         </Tabs>
       </CardContent>

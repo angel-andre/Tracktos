@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.portfolio-history]
 verify_jwt = false
+
+[functions.trending-data]
+verify_jwt = false
