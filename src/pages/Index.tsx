@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
 import { getSavedWallets, saveWallet, type SavedWallet } from "@/lib/walletStorage";
 import { AccountCard } from "@/components/dashboard/AccountCard";
 import { TokensCard } from "@/components/dashboard/TokensCard";
@@ -95,6 +96,7 @@ export default function IndexPage() {
   const [address, setAddress] = useState("");
   const [network, setNetwork] = useState<"mainnet" | "testnet">("mainnet");
   const [loading, setLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [error, setError] = useState("");
   const [data, setData] = useState<AptosData | null>(null);
   const [savedWallets, setSavedWallets] = useState<SavedWallet[]>([]);
@@ -127,7 +129,16 @@ export default function IndexPage() {
   const loadStatsFromUrl = async (addr: string, net: "mainnet" | "testnet") => {
     setError("");
     setLoading(true);
+    setLoadingProgress(0);
     setData(null);
+
+    // Simulate progress
+    const progressInterval = setInterval(() => {
+      setLoadingProgress(prev => {
+        if (prev >= 90) return prev;
+        return prev + Math.random() * 15;
+      });
+    }, 300);
 
     try {
       const { data: responseData, error: functionError } = await supabase.functions.invoke(
@@ -145,6 +156,7 @@ export default function IndexPage() {
         throw new Error(responseData.error);
       }
 
+      setLoadingProgress(100);
       setData(responseData as AptosData);
       setLastUpdated(new Date());
       
@@ -155,7 +167,9 @@ export default function IndexPage() {
       console.error("Error fetching Aptos data:", err);
       setError(err.message || "Failed to load wallet data. Please check the address and try again.");
     } finally {
+      clearInterval(progressInterval);
       setLoading(false);
+      setTimeout(() => setLoadingProgress(0), 500);
     }
   };
 
@@ -170,7 +184,16 @@ export default function IndexPage() {
 
     setError("");
     setLoading(true);
+    setLoadingProgress(0);
     setData(null);
+
+    // Simulate progress
+    const progressInterval = setInterval(() => {
+      setLoadingProgress(prev => {
+        if (prev >= 90) return prev;
+        return prev + Math.random() * 15;
+      });
+    }, 300);
 
     try {
       const { data: responseData, error: functionError } = await supabase.functions.invoke(
@@ -188,6 +211,7 @@ export default function IndexPage() {
         throw new Error(responseData.error);
       }
 
+      setLoadingProgress(100);
       setData(responseData as AptosData);
       setLastUpdated(new Date());
       
@@ -199,7 +223,9 @@ export default function IndexPage() {
       console.error("Error fetching Aptos data:", err);
       setError(err.message || "Failed to load wallet data. Please check the address and try again.");
     } finally {
+      clearInterval(progressInterval);
       setLoading(false);
+      setTimeout(() => setLoadingProgress(0), 500);
     }
   };
 
@@ -312,13 +338,22 @@ export default function IndexPage() {
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Loading...
+                  {Math.round(loadingProgress)}%
                 </>
               ) : (
                 "Analyze Wallet"
               )}
             </Button>
           </div>
+
+          {loading && loadingProgress > 0 && (
+            <div className="space-y-2">
+              <Progress value={loadingProgress} className="h-2" />
+              <p className="text-sm text-muted-foreground text-center">
+                Fetching wallet data... {Math.round(loadingProgress)}%
+              </p>
+            </div>
+          )}
 
           {error && (
             <div className="bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 rounded-lg">
