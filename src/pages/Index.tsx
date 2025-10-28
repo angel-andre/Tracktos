@@ -12,6 +12,7 @@ import { PortfolioChartCard } from "@/components/dashboard/PortfolioChartCard";
 import { WalletIdentityCard } from "@/components/dashboard/WalletIdentityCard";
 import { TransactionAnalyticsCard } from "@/components/dashboard/TransactionAnalyticsCard";
 import { DeFiActivityCard } from "@/components/dashboard/DeFiActivityCard";
+import { ShareExportCard } from "@/components/dashboard/ShareExportCard";
 import aptosLogo from "@/assets/aptos-logo.png";
 
 interface AccountData {
@@ -263,6 +264,16 @@ export default function IndexPage() {
                 portfolioValue={data?.totalUsdValue || 0}
                 tokenCount={data?.tokens?.length || 0}
               />
+              {data && (
+                <ShareExportCard
+                  address={address}
+                  portfolioValue={data.totalUsdValue}
+                  transactionCount={data.totalTransactionCount}
+                  tokenCount={data.tokens?.length || 0}
+                  nftCount={data.totalNftCount}
+                  walletAge={data.walletIdentity?.activeDays ? `${data.walletIdentity.activeDays} days` : undefined}
+                />
+              )}
             </TabsContent>
           </Tabs>
         )}
