@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Sparkles, Plus } from "lucide-react";
+import { Loader2, Sparkles, Plus, RefreshCw } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -96,6 +97,7 @@ export default function IndexPage() {
   const [data, setData] = useState<AptosData | null>(null);
   const [savedWallets, setSavedWallets] = useState<SavedWallet[]>([]);
   const [showNewWalletInput, setShowNewWalletInput] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
     const wallets = getSavedWallets();
@@ -134,6 +136,7 @@ export default function IndexPage() {
       }
 
       setData(responseData as AptosData);
+      setLastUpdated(new Date());
       
       // Save wallet to local storage
       saveWallet(address.trim());
@@ -257,6 +260,24 @@ export default function IndexPage() {
           {error && (
             <div className="bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 rounded-lg">
               {error}
+            </div>
+          )}
+
+          {lastUpdated && data && (
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>
+                Last updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
+              </span>
+              <Button
+                onClick={loadStats}
+                variant="ghost"
+                size="sm"
+                disabled={loading}
+                className="gap-2"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
             </div>
           )}
         </div>
