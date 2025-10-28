@@ -214,7 +214,7 @@ export function ShareExportCard({
               </div>
               <div style="background: rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
                 <span style="font-size: 10px; color: #e5e7eb;">NFT Holdings</span>
-                <span style="font-size: 10px; font-weight: bold; color: #60a5fa;">${nftCount} NFTs</span>
+                <span style="font-size: 10px; font-weight: bold; color: #fbbf24;">${nftCount} NFTs</span>
               </div>
             </div>
           </div>
