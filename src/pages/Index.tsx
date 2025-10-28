@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Sparkles, Plus, RefreshCw } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -90,6 +91,7 @@ interface AptosData {
 }
 
 export default function IndexPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [address, setAddress] = useState("");
   const [network, setNetwork] = useState<"mainnet" | "testnet">("mainnet");
   const [loading, setLoading] = useState(false);
@@ -99,21 +101,72 @@ export default function IndexPage() {
   const [showNewWalletInput, setShowNewWalletInput] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
+  // Initialize from URL params or saved wallets
   useEffect(() => {
+    const urlAddress = searchParams.get('address');
+    const urlNetwork = searchParams.get('network');
     const wallets = getSavedWallets();
     setSavedWallets(wallets);
-    if (wallets.length > 0) {
+
+    // Priority: URL params > saved wallets > show input
+    if (urlAddress) {
+      setAddress(urlAddress);
+      if (urlNetwork === 'testnet' || urlNetwork === 'mainnet') {
+        setNetwork(urlNetwork);
+      }
+      // Auto-load if address in URL
+      loadStatsFromUrl(urlAddress, urlNetwork === 'testnet' ? 'testnet' : 'mainnet');
+    } else if (wallets.length > 0) {
       setAddress(wallets[0].address);
     } else {
       setShowNewWalletInput(true);
     }
   }, []);
 
+  // Helper function to load stats (used by initial URL load)
+  const loadStatsFromUrl = async (addr: string, net: "mainnet" | "testnet") => {
+    setError("");
+    setLoading(true);
+    setData(null);
+
+    try {
+      const { data: responseData, error: functionError } = await supabase.functions.invoke(
+        'aptos',
+        {
+          body: { address: addr.trim(), network: net },
+        }
+      );
+
+      if (functionError) {
+        throw new Error(functionError.message);
+      }
+
+      if (responseData.error) {
+        throw new Error(responseData.error);
+      }
+
+      setData(responseData as AptosData);
+      setLastUpdated(new Date());
+      
+      saveWallet(addr.trim());
+      setSavedWallets(getSavedWallets());
+      setShowNewWalletInput(false);
+    } catch (err: any) {
+      console.error("Error fetching Aptos data:", err);
+      setError(err.message || "Failed to load wallet data. Please check the address and try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadStats = async () => {
     if (!address.trim()) {
       setError("Please enter a wallet address");
       return;
     }
+
+    // Update URL with current address and network
+    setSearchParams({ address: address.trim(), network });
 
     setError("");
     setLoading(true);
@@ -154,9 +207,19 @@ export default function IndexPage() {
     if (value === "new") {
       setShowNewWalletInput(true);
       setAddress("");
+      // Clear URL params when adding new wallet
+      setSearchParams({});
     } else {
       setAddress(value);
       setShowNewWalletInput(false);
+    }
+  };
+
+  const handleNetworkChange = (newNetwork: "mainnet" | "testnet") => {
+    setNetwork(newNetwork);
+    // If we have data loaded, update URL
+    if (data && address) {
+      setSearchParams({ address: address.trim(), network: newNetwork });
     }
   };
 
@@ -193,14 +256,14 @@ export default function IndexPage() {
         <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl shadow-xl p-6 space-y-4">
           <div className="flex gap-2">
             <Button
-              onClick={() => setNetwork("mainnet")}
+              onClick={() => handleNetworkChange("mainnet")}
               variant={network === "mainnet" ? "default" : "outline"}
               className="font-medium"
             >
               Mainnet
             </Button>
             <Button
-              onClick={() => setNetwork("testnet")}
+              onClick={() => handleNetworkChange("testnet")}
               variant={network === "testnet" ? "default" : "outline"}
               className="font-medium"
             >
