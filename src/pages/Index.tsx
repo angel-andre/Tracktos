@@ -18,6 +18,7 @@ import { WalletIdentityCard } from "@/components/dashboard/WalletIdentityCard";
 import { TransactionAnalyticsCard } from "@/components/dashboard/TransactionAnalyticsCard";
 import { DeFiActivityCard } from "@/components/dashboard/DeFiActivityCard";
 import { ShareExportCard } from "@/components/dashboard/ShareExportCard";
+import { TrendingCard } from "@/components/dashboard/TrendingCard";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info } from "lucide-react";
 import aptosLogo from "@/assets/aptos-logo.png";
@@ -408,6 +409,7 @@ export default function IndexPage() {
               <TabsTrigger value="activity" className="flex-1 min-w-[100px]">Activity</TabsTrigger>
               <TabsTrigger value="defi" className="flex-1 min-w-[100px]">DeFi</TabsTrigger>
               <TabsTrigger value="identity" className="flex-1 min-w-[100px]">Identity</TabsTrigger>
+              <TabsTrigger value="trending" className="flex-1 min-w-[100px]">Trending</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
@@ -474,6 +476,10 @@ export default function IndexPage() {
                   walletIdentity={data.walletIdentity}
                 />
               )}
+            </TabsContent>
+
+            <TabsContent value="trending" className="space-y-6">
+              <TrendingCard network={network} />
             </TabsContent>
           </Tabs>
         )}
