@@ -21,6 +21,7 @@ import { ShareExportCard } from "@/components/dashboard/ShareExportCard";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info } from "lucide-react";
 import aptosLogo from "@/assets/aptos-logo.png";
+import { useToast } from "@/hooks/use-toast";
 
 const DEMO_WALLET = "0x632dad777e05538c1ce47fad67ad801d242b481e45adfbc058a45e59851c3907";
 
@@ -94,10 +95,12 @@ interface AptosData {
 }
 
 export default function IndexPage() {
+  const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [address, setAddress] = useState("");
   const [network, setNetwork] = useState<"mainnet" | "testnet">("mainnet");
   const [loading, setLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [error, setError] = useState("");
   const [data, setData] = useState<AptosData | null>(null);
@@ -130,9 +133,20 @@ export default function IndexPage() {
   // Helper function to load stats (used by initial URL load)
   const loadStatsFromUrl = async (addr: string, net: "mainnet" | "testnet") => {
     setError("");
-    setLoading(true);
+    const hasExistingData = data !== null;
+    
+    if (hasExistingData) {
+      setIsRefreshing(true);
+      toast({
+        title: "Refreshing wallet data...",
+        description: "Keep browsing, data will update soon",
+      });
+    } else {
+      setLoading(true);
+      setData(null);
+    }
+    
     setLoadingProgress(0);
-    setData(null);
 
     // Simulate progress
     const progressInterval = setInterval(() => {
@@ -165,12 +179,25 @@ export default function IndexPage() {
       saveWallet(addr.trim());
       setSavedWallets(getSavedWallets());
       setShowNewWalletInput(false);
+      
+      if (hasExistingData) {
+        toast({
+          title: "Wallet data updated",
+          description: "Latest data loaded successfully",
+        });
+      }
     } catch (err: any) {
       console.error("Error fetching Aptos data:", err);
       setError(err.message || "Failed to load wallet data. Please check the address and try again.");
+      toast({
+        variant: "destructive",
+        title: "Failed to load data",
+        description: err.message || "Please try again",
+      });
     } finally {
       clearInterval(progressInterval);
       setLoading(false);
+      setIsRefreshing(false);
       setTimeout(() => setLoadingProgress(0), 500);
     }
   };
@@ -185,9 +212,20 @@ export default function IndexPage() {
     setSearchParams({ address: address.trim(), network });
 
     setError("");
-    setLoading(true);
+    const hasExistingData = data !== null;
+    
+    if (hasExistingData) {
+      setIsRefreshing(true);
+      toast({
+        title: "Loading wallet data...",
+        description: "Keep browsing, data will update soon",
+      });
+    } else {
+      setLoading(true);
+      setData(null);
+    }
+    
     setLoadingProgress(0);
-    setData(null);
 
     // Simulate progress
     const progressInterval = setInterval(() => {
@@ -221,12 +259,25 @@ export default function IndexPage() {
       saveWallet(address.trim());
       setSavedWallets(getSavedWallets());
       setShowNewWalletInput(false);
+      
+      if (hasExistingData) {
+        toast({
+          title: "Wallet data updated",
+          description: "Latest data loaded successfully",
+        });
+      }
     } catch (err: any) {
       console.error("Error fetching Aptos data:", err);
       setError(err.message || "Failed to load wallet data. Please check the address and try again.");
+      toast({
+        variant: "destructive",
+        title: "Failed to load data",
+        description: err.message || "Please try again",
+      });
     } finally {
       clearInterval(progressInterval);
       setLoading(false);
+      setIsRefreshing(false);
       setTimeout(() => setLoadingProgress(0), 500);
     }
   };
@@ -240,14 +291,22 @@ export default function IndexPage() {
     } else {
       setAddress(value);
       setShowNewWalletInput(false);
+      toast({
+        title: "Wallet selected",
+        description: "Click 'Analyze Wallet' to load data",
+      });
     }
   };
 
   const handleNetworkChange = (newNetwork: "mainnet" | "testnet") => {
     setNetwork(newNetwork);
-    // If we have data loaded, update URL
+    // If we have data loaded, update URL and show feedback
     if (data && address) {
       setSearchParams({ address: address.trim(), network: newNetwork });
+      toast({
+        title: `Switched to ${newNetwork}`,
+        description: "Click refresh to load data for this network",
+      });
     }
   };
 
@@ -350,10 +409,10 @@ export default function IndexPage() {
             )}
             <Button
               onClick={loadStats}
-              disabled={loading || !address.trim()}
+              disabled={loading || isRefreshing || !address.trim()}
               className="sm:w-auto gap-2"
             >
-              {loading ? (
+              {loading || isRefreshing ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   {Math.round(loadingProgress)}%
@@ -364,11 +423,11 @@ export default function IndexPage() {
             </Button>
           </div>
 
-          {loading && loadingProgress > 0 && (
+          {(loading || isRefreshing) && loadingProgress > 0 && (
             <div className="space-y-2">
               <Progress value={loadingProgress} className="h-2" />
               <p className="text-sm text-muted-foreground text-center">
-                Fetching wallet data... {Math.round(loadingProgress)}%
+                {isRefreshing ? "Refreshing wallet data..." : "Fetching wallet data..."} {Math.round(loadingProgress)}%
               </p>
             </div>
           )}
@@ -388,10 +447,10 @@ export default function IndexPage() {
                 onClick={loadStats}
                 variant="ghost"
                 size="sm"
-                disabled={loading}
+                disabled={loading || isRefreshing}
                 className="gap-2"
               >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 ${(loading || isRefreshing) ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
             </div>
@@ -411,29 +470,37 @@ export default function IndexPage() {
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
-              <AccountCard 
-                data={data?.account || null} 
-                loading={loading}
-                transactionCount={data?.totalTransactionCount || 0}
-                nftCount={data?.totalNftCount || 0}
-                tokenCount={data?.tokens?.length || 0}
-                sentimentReasons={data?.sentimentReasons || []}
-              />
+              <div className={isRefreshing ? "opacity-70 transition-opacity" : ""}>
+                <AccountCard 
+                  data={data?.account || null} 
+                  loading={loading}
+                  transactionCount={data?.totalTransactionCount || 0}
+                  nftCount={data?.totalNftCount || 0}
+                  tokenCount={data?.tokens?.length || 0}
+                  sentimentReasons={data?.sentimentReasons || []}
+                />
+              </div>
               {data && (
-                <PortfolioChartCard address={address} currentTotalUsdValue={data.totalUsdValue} />
+                <div className={isRefreshing ? "opacity-70 transition-opacity" : ""}>
+                  <PortfolioChartCard address={address} currentTotalUsdValue={data.totalUsdValue} />
+                </div>
               )}
             </TabsContent>
 
             <TabsContent value="tokens" className="space-y-6">
-              <TokensCard 
-                tokens={data?.tokens || null} 
-                totalUsdValue={data?.totalUsdValue || 0}
-                loading={loading} 
-              />
+              <div className={isRefreshing ? "opacity-70 transition-opacity" : ""}>
+                <TokensCard 
+                  tokens={data?.tokens || null} 
+                  totalUsdValue={data?.totalUsdValue || 0}
+                  loading={loading} 
+                />
+              </div>
             </TabsContent>
 
             <TabsContent value="nfts" className="space-y-6">
-              <NFTsCard nfts={data?.nfts || null} loading={loading} network={network} />
+              <div className={isRefreshing ? "opacity-70 transition-opacity" : ""}>
+                <NFTsCard nfts={data?.nfts || null} loading={loading} network={network} />
+              </div>
             </TabsContent>
 
             <TabsContent value="activity" className="space-y-6">
