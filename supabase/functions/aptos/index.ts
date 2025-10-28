@@ -579,8 +579,59 @@ serve(async (req) => {
 
     let metadataFetches = 0;
 
-    if (data.current_token_ownerships_v2) {
-      for (const nft of data.current_token_ownerships_v2) {
+    // Fetch all NFT ownerships in pages to cover large wallets
+    const totalNftCount = data.current_token_ownerships_v2_aggregate?.aggregate?.count || 0;
+    const pageSize = 1000;
+    let allOwnerships = Array.isArray(data.current_token_ownerships_v2) ? data.current_token_ownerships_v2 : [];
+
+    if (totalNftCount > allOwnerships.length) {
+      console.log(`Fetching additional NFT pages: total=${totalNftCount}, initial=${allOwnerships.length}, pageSize=${pageSize}`);
+      const fetchPage = async (offset: number) => {
+        const pageQuery = `
+          query GetOwnerships($address: String!, $limit: Int!, $offset: Int!) {
+            current_token_ownerships_v2(
+              where: {owner_address: {_eq: $address}, amount: {_gt: "0"}}
+              limit: $limit
+              offset: $offset
+            ) {
+              token_data_id
+              amount
+              current_token_data {
+                token_name
+                collection_id
+                largest_property_version_v1
+                token_uri
+                cdn_asset_uris { cdn_image_uri raw_image_uri cdn_json_uri }
+                current_collection { collection_name }
+              }
+            }
+          }
+        `;
+        const pageResp = await fetch(graphqlUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: pageQuery, variables: { address, limit: pageSize, offset } })
+        });
+        if (!pageResp.ok) {
+          const errText = await pageResp.text();
+          console.log('NFT page fetch failed', { offset, errText });
+          return [] as any[];
+        }
+        const pj = await pageResp.json();
+        return pj?.data?.current_token_ownerships_v2 || [];
+      };
+
+      const promises: Promise<any[]>[] = [];
+      for (let offset = allOwnerships.length; offset < totalNftCount; offset += pageSize) {
+        promises.push(fetchPage(offset));
+      }
+      const pagesResults = await Promise.all(promises);
+      allOwnerships = [...allOwnerships, ...pagesResults.flat()];
+      console.log(`✓ Loaded all NFT ownerships: ${allOwnerships.length}/${totalNftCount}`);
+    }
+
+    if (allOwnerships && allOwnerships.length > 0) {
+      for (const nft of allOwnerships) {
         const tokenData = nft.current_token_data;
         if (tokenData) {
           const name = tokenData.token_name || 'Unknown NFT';
@@ -700,8 +751,7 @@ serve(async (req) => {
     
     console.log(`✓ 24h change: $${usdChange24h.toFixed(2)} (${percentChange24h.toFixed(2)}%)`);
 
-    // Get total NFT count
-    const totalNftCount = data.current_token_ownerships_v2_aggregate?.aggregate?.count || 0;
+    // Get total NFT count (computed earlier): totalNftCount
 
     // Fetch transactions and get total count
     console.log('Fetching transactions...');
