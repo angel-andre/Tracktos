@@ -87,13 +87,22 @@ serve(async (req) => {
       ? 'https://indexer-testnet.staging.gcp.aptosdev.com/v1/graphql'
       : 'https://api.mainnet.aptoslabs.com/v1/graphql';
 
-    // Updated GraphQL query using current (non-deprecated) schema only, with CDN image URIs for NFTs
+    // Updated GraphQL query to fetch both Fungible Assets AND legacy Coins
     const graphqlQuery = `
       query GetAccountData($address: String!) {
         current_fungible_asset_balances(where: {owner_address: {_eq: $address}}) {
           amount
           asset_type
           metadata {
+            name
+            symbol
+            decimals
+          }
+        }
+        current_coin_balances(where: {owner_address: {_eq: $address}}) {
+          amount
+          coin_type
+          coin_info {
             name
             symbol
             decimals
@@ -438,6 +447,7 @@ serve(async (req) => {
     const tokens: Array<{ name: string; symbol: string; balance: string }> = [];
     const tokenAssetTypes: Record<string, string> = {};
 
+    // Process Fungible Assets
     if (data.current_fungible_asset_balances) {
       for (const fa of data.current_fungible_asset_balances) {
         const amount = fa.amount ?? '0';
@@ -459,6 +469,33 @@ serve(async (req) => {
             tokens.push({ name, symbol, balance });
             tokenAssetTypes[symbol] = assetType;
             console.log('✓ FA:', symbol, balance);
+          }
+        }
+      }
+    }
+
+    // Process legacy Coin standard tokens
+    if (data.current_coin_balances) {
+      for (const coin of data.current_coin_balances) {
+        const amount = coin.amount ?? '0';
+        const rawDigits = String(amount).replace(/\D/g, '');
+        const raw = rawDigits ? BigInt(rawDigits) : 0n;
+        if (raw > 0n) {
+          const coinInfo = coin.coin_info || {};
+          const symbol = coinInfo.symbol || 'COIN';
+          const name = coinInfo.name || symbol;
+          const decimals = Number(coinInfo.decimals ?? 8);
+          const balance = formatUnits(String(raw), decimals);
+          const coinType = coin.coin_type || '';
+
+          const isAPT = coinType.includes('0x1::aptos_coin::AptosCoin') || symbol === 'APT';
+
+          if (isAPT) {
+            aptRaw += raw;
+          } else {
+            tokens.push({ name, symbol, balance });
+            tokenAssetTypes[symbol] = coinType;
+            console.log('✓ Coin:', symbol, balance);
           }
         }
       }
