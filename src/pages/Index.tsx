@@ -22,7 +22,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info } from "lucide-react";
 import aptosLogo from "@/assets/aptos-logo.png";
 
-const DEMO_WALLET = "0x0485e419a2cd8ba9fc159b0ca6a27b4c326033910bec559f4559893f24ccbedd";
+const DEMO_WALLET = "0x632dad777e05538c1ce47fad67ad801d242b481e45adfbc058a45e59851c3907";
 
 interface AccountData {
   address: string;
