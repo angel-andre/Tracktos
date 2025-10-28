@@ -438,28 +438,60 @@ serve(async (req) => {
     const tokens: Array<{ name: string; symbol: string; balance: string }> = [];
     const tokenAssetTypes: Record<string, string> = {};
 
-    if (data.current_fungible_asset_balances) {
-      for (const fa of data.current_fungible_asset_balances) {
-        const amount = fa.amount ?? '0';
-        const rawDigits = String(amount).replace(/\D/g, '');
-        const raw = rawDigits ? BigInt(rawDigits) : 0n;
-        if (raw > 0n) {
-          const metadata = fa.metadata || {};
-          const symbol = metadata.symbol || 'FA';
-          const name = metadata.name || symbol;
-          const decimals = Number(metadata.decimals ?? 8);
-          const balance = formatUnits(String(raw), decimals);
-          const assetType = fa.asset_type || '';
-
-          const isAPT = assetType.includes('0x1::aptos_coin::AptosCoin') || symbol === 'APT' || (name?.toLowerCase?.().includes('aptos') && name.toLowerCase().includes('coin'));
-
-          if (isAPT) {
-            aptRaw += raw;
-          } else {
-            tokens.push({ name, symbol, balance });
-            tokenAssetTypes[symbol] = assetType;
-            console.log('✓ FA:', symbol, balance);
+    // Fetch ALL fungible asset balances in pages (covers legacy coins too)
+    const faPageSize = 500;
+    const fetchFABalancePage = async (offset: number) => {
+      const q = `
+        query GetFABalances($address: String!, $limit: Int!, $offset: Int!) {
+          current_fungible_asset_balances(
+            where: {owner_address: {_eq: $address}}
+            order_by: { asset_type: asc }
+            limit: $limit
+            offset: $offset
+          ) {
+            amount
+            asset_type
+            metadata { name symbol decimals }
           }
+        }
+      `;
+      const r = await fetch(graphqlUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q, variables: { address, limit: faPageSize, offset } })
+      });
+      if (!r.ok) { console.log('FA page fetch failed', offset, await r.text()); return [] as any[]; }
+      const j = await r.json();
+      return j?.data?.current_fungible_asset_balances || [];
+    };
+
+    let faAll: any[] = [];
+    for (let offset = 0; ; offset += faPageSize) {
+      const page = await fetchFABalancePage(offset);
+      faAll = faAll.concat(page);
+      if (page.length < faPageSize) break;
+    }
+    console.log(`✓ Loaded all FA balances: ${faAll.length}`);
+
+    for (const fa of faAll) {
+      const amount = fa.amount ?? '0';
+      const rawDigits = String(amount).replace(/\D/g, '');
+      const raw = rawDigits ? BigInt(rawDigits) : 0n;
+      if (raw > 0n) {
+        const metadata = fa.metadata || {};
+        const symbol: string = metadata.symbol || 'FA';
+        const name: string = metadata.name || symbol;
+        const decimals = Number(metadata.decimals ?? 8);
+        const balance = formatUnits(String(raw), decimals);
+        const assetType = fa.asset_type || '';
+
+        const isAPT = assetType.includes('0x1::aptos_coin::AptosCoin') || symbol.toUpperCase() === 'APT' || (name?.toLowerCase?.().includes('aptos') && name.toLowerCase().includes('coin'));
+
+        if (isAPT) {
+          aptRaw += raw;
+        } else {
+          tokens.push({ name, symbol, balance });
+          tokenAssetTypes[symbol.toUpperCase()] = assetType;
+          console.log('✓ FA:', symbol, balance);
         }
       }
     }
