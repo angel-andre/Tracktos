@@ -646,42 +646,101 @@ serve(async (req) => {
       }
     }
     
-    // Then check delegated staking activities (for direct validator staking)
-    if (data.delegated_staking_activities && data.delegated_staking_activities.length > 0) {
+    // Prefer precise delegated staking via current_delegator_balances + pool totals
+    let foundDelegatedViaBalances = false;
+    try {
+      const delegatorBalancesQuery = `
+        query GetDelegatorBalances($address: String!) {
+          current_delegator_balances(where: {delegator_address: {_eq: $address}}) {
+            pool_address
+            pool_type
+            shares
+          }
+        }
+      `;
+      const delResp = await fetch(graphqlUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: delegatorBalancesQuery, variables: { address } })
+      });
+      if (delResp.ok) {
+        const delJson = await delResp.json();
+        const balances: Array<{ pool_address: string; pool_type: string; shares: string }> = delJson?.data?.current_delegator_balances || [];
+        if (balances.length > 0) {
+          const poolAddresses = Array.from(new Set(balances.map(b => b.pool_address).filter(Boolean)));
+          if (poolAddresses.length > 0) {
+            const poolsQuery = `
+              query GetPools($addresses: [String!]) {
+                current_delegated_staking_pool_balances(where: {staking_pool_address: {_in: $addresses}}) {
+                  staking_pool_address
+                  total_coins
+                  total_shares
+                }
+              }
+            `;
+            const poolsResp = await fetch(graphqlUrl, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query: poolsQuery, variables: { addresses: poolAddresses } })
+            });
+            if (poolsResp.ok) {
+              const poolsJson = await poolsResp.json();
+              const pools: Array<{ staking_pool_address: string; total_coins: string; total_shares: string }> = poolsJson?.data?.current_delegated_staking_pool_balances || [];
+              const totalsMap = new Map(pools.map(p => [p.staking_pool_address, {
+                totalCoins: BigInt(String(p.total_coins || '0')),
+                totalShares: BigInt(String(p.total_shares || '0')),
+              }]));
+
+              for (const b of balances) {
+                const poolAddr = b.pool_address;
+                const poolType = (b.pool_type || '').toLowerCase();
+                if (poolType !== 'active') continue; // only count active stake
+                const shares = BigInt(String(b.shares || '0'));
+                const totals = totalsMap.get(poolAddr);
+                if (!totals || totals.totalShares <= 0n || shares <= 0n) continue;
+                const coins = (shares * totals.totalCoins) / totals.totalShares; // convert shares -> APT octas
+                if (coins > 0n) {
+                  const formattedAmount = formatUnits(String(coins), 8);
+                  stakingBreakdown.push({
+                    poolAddress: poolAddr,
+                    amount: formattedAmount,
+                    type: 'validator',
+                  });
+                  totalStaked += coins;
+                  foundDelegatedViaBalances = true;
+                  console.log(`✓ Found validator staking via balances: ${poolAddr}: ${formattedAmount}`);
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log('Delegated staking balances lookup failed:', e);
+    }
+
+    // Fallback: derive from delegated_staking_activities if no balances were found
+    if (!foundDelegatedViaBalances && data.delegated_staking_activities && data.delegated_staking_activities.length > 0) {
       // Group by pool address and sum amounts
-      const poolMap = new Map<string, { amount: bigint; eventType: string }>();
-      
+      const poolMap = new Map<string, { amount: bigint }>();
       for (const stake of data.delegated_staking_activities) {
         if (stake.pool_address && stake.amount) {
           const poolAddr = stake.pool_address;
           const amount = BigInt(stake.amount);
-          const eventType = stake.event_type || 'add_stake';
-          
-          if (!poolMap.has(poolAddr)) {
-            poolMap.set(poolAddr, { amount: 0n, eventType });
-          }
-          
-          // Add for stake events, subtract for unstake
-          if (eventType.includes('add') || eventType.includes('stake')) {
+          const et = String(stake.event_type || '').toLowerCase();
+          if (!poolMap.has(poolAddr)) poolMap.set(poolAddr, { amount: 0n });
+          // Add only for explicit add/reactivate; subtract for unlock/withdraw/unstake
+          if (et.includes('add') || et.includes('reactivate')) {
             poolMap.get(poolAddr)!.amount += amount;
-          } else if (eventType.includes('unlock') || eventType.includes('withdraw')) {
+          } else if (et.includes('unlock') || et.includes('withdraw') || et.includes('unlike') || et.includes('unstake')) {
             poolMap.get(poolAddr)!.amount -= amount;
           }
         }
       }
-      
       for (const [poolAddr, { amount }] of poolMap.entries()) {
         if (amount > 0n) {
           const formattedAmount = formatUnits(amount.toString(), 8);
-          
-          stakingBreakdown.push({
-            poolAddress: poolAddr,
-            amount: formattedAmount,
-            type: 'validator',
-          });
-          
+          stakingBreakdown.push({ poolAddress: poolAddr, amount: formattedAmount, type: 'validator' });
           totalStaked += amount;
-          console.log(`✓ Found validator staking: ${poolAddr}: ${formattedAmount}`);
+          console.log(`✓ Found validator staking (fallback activities): ${poolAddr}: ${formattedAmount}`);
         }
       }
     }
