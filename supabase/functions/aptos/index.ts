@@ -724,18 +724,18 @@ serve(async (req) => {
       return Number(b.balance) - Number(a.balance);
     });
     
-    // Take top 20 tokens to ensure we don't miss any significant holdings
-    const topTokens = tokensWithUsd.slice(0, 20);
+    // Include ALL tokens (no artificial top-N limit)
+    const allTokens = tokensWithUsd;
     
-    // Calculate total USD value from all top tokens (APT now included)
-    const totalUsdValue = topTokens.reduce((sum, token) => sum + token.usdValue, 0);
+    // Calculate total USD value from all tokens (APT included)
+    const totalUsdValue = allTokens.reduce((sum, token) => sum + token.usdValue, 0);
     
-    console.log(`✓ Total portfolio USD value: $${totalUsdValue.toFixed(2)}`);
+    console.log(`✓ Total portfolio USD value: $${totalUsdValue.toFixed(2)} with ${allTokens.length} tokens`);
 
     // Calculate 24h change (using already-fetched historical prices)
     console.log('Calculating 24h portfolio change...');
     
-    const totalUsdValue24hAgo = topTokens.reduce((sum, token) => {
+    const totalUsdValue24hAgo = allTokens.reduce((sum, token) => {
       const price24hAgo = historicalPriceMap.get(token.symbol.toUpperCase()) || token.usdPrice; // fallback to current
       const balance = parseFloat(token.balance) || 0;
       return sum + (balance * price24hAgo);
@@ -1878,15 +1878,15 @@ serve(async (req) => {
     }
 
     // Factor 3: Token Diversity (more nuanced thresholds)
-    const tokenDiversityPoints = Math.min(topTokens.length * 2, 10); // Max 10 points
+    const tokenDiversityPoints = Math.min(allTokens.length * 2, 10); // Max 10 points
     sentimentScore += tokenDiversityPoints;
-    if (topTokens.length > 10) {
+    if (allTokens.length > 10) {
       sentimentReasons.push('Highly diverse portfolio');
-    } else if (topTokens.length > 5) {
+    } else if (allTokens.length > 5) {
       sentimentReasons.push('Well-diversified portfolio');
-    } else if (topTokens.length > 2) {
+    } else if (allTokens.length > 2) {
       sentimentReasons.push('Moderately diverse portfolio');
-    } else if (topTokens.length > 0) {
+    } else if (allTokens.length > 0) {
       sentimentReasons.push('Limited token diversity');
     } else {
       sentimentReasons.push('No token diversity');
@@ -2026,13 +2026,13 @@ serve(async (req) => {
     }
 
     // DeFi User Badge - based on token diversity
-    if (topTokens.length > 10) {
+    if (allTokens.length > 10) {
       badges.push({
         name: 'DeFi Explorer',
         description: '10+ different tokens - Diverse DeFi user',
         icon: 'compass'
       });
-    } else if (topTokens.length > 5) {
+    } else if (allTokens.length > 5) {
       badges.push({
         name: 'Token Holder',
         description: '5+ different tokens - Active in DeFi',
@@ -2075,7 +2075,7 @@ serve(async (req) => {
         usdChange24h,
         percentChange24h
       },
-      tokens: topTokens,
+      tokens: allTokens,
       nfts: sortedNfts,
       activity,
       totalNftCount,
@@ -2106,7 +2106,7 @@ serve(async (req) => {
     console.log('Returning:', {
       apt: aptBalance,
       staked: stakedApt,
-      tokens: topTokens.length,
+      tokens: allTokens.length,
       nfts: totalNftCount,
       txs: totalTransactionCount
     });
