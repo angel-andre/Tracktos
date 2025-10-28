@@ -596,6 +596,38 @@ serve(async (req) => {
       protocol?: string;
     }> = [];
     
+    let totalStaked = 0n;
+    
+    // First, check for liquid staking tokens in the token balances
+    const liquidStakingTokens: Record<string, { protocol: string; assetType: string }> = {
+      'Staked KofiAPT': { protocol: 'Amnis Finance', assetType: '0x111ae3e5bc816a5e63c2da97d0aa3886519e0cd5e4b046659fa35796bd11542a::amapt_token::AmnisApt' },
+      'Staked Aptos': { protocol: 'Tortuga Finance', assetType: '0x84d7aeef42d38a5ffc3ccef853e1b82e4958659d16a7de736a29c55fbbeb0114::staked_aptos_coin::StakedAptosCoin' },
+      'Staked Aptos Coin': { protocol: 'Ditto Finance', assetType: '0xd11107bdf0d6d7040c6c0bfbdecb6545191fdf13e8d8d259952f53e1713f61b5::stapt_token::StakedApt' },
+      'Liquid Staked Aptos': { protocol: 'Thala Labs', assetType: '0xfaf4e633ae9eb31366c9ca24214231760926576c7b625313b3688b5e900731f6::staking::ThalaAPT' },
+    };
+    
+    for (const asset of data.current_fungible_asset_balances) {
+      const metaName = asset.metadata?.name || '';
+      if (liquidStakingTokens[metaName]) {
+        const amount = BigInt(asset.amount);
+        if (amount > 0n) {
+          const formattedAmount = formatUnits(amount.toString(), asset.metadata?.decimals || 8);
+          const { protocol, assetType } = liquidStakingTokens[metaName];
+          
+          stakingBreakdown.push({
+            poolAddress: assetType,
+            amount: formattedAmount,
+            type: 'liquid_staking',
+            protocol
+          });
+          
+          totalStaked += amount;
+          console.log(`✓ Found liquid staking: ${metaName} (${protocol}): ${formattedAmount}`);
+        }
+      }
+    }
+    
+    // Then check delegated staking activities (for direct validator staking)
     if (data.delegated_staking_activities && data.delegated_staking_activities.length > 0) {
       // Group by pool address and sum amounts
       const poolMap = new Map<string, { amount: bigint; eventType: string }>();
@@ -619,34 +651,27 @@ serve(async (req) => {
         }
       }
       
-      // Known liquid staking protocols by their pool addresses
-      const liquidStakingProtocols: Record<string, string> = {
-        '0x111ae3e5bc816a5e63c2da97d0aa3886519e0cd5e4b046659fa35796bd11542a': 'Amnis Finance',
-        '0xd11107bdf0d6d7040c6c0bfbdecb6545191fdf13e8d8d259952f53e1713f61b5': 'Tortuga Finance',
-        '0x6bc2b3f9aa5e2153a1ef4e520d51bc3fc2a4c20342c2f9e2e8bb49e3f7ecd4c3': 'Ditto Finance',
-        '0xe7a8c7c5f5f1f75d8e6b7c0f3b0f5b8c6b7e7f7c7d7e7f7c7d7e7f7c7d7e7f7c': 'Thala Labs',
-      };
-      
-      let totalStaked = 0n;
-      
       for (const [poolAddr, { amount }] of poolMap.entries()) {
         if (amount > 0n) {
           const formattedAmount = formatUnits(amount.toString(), 8);
-          const protocol = liquidStakingProtocols[poolAddr];
           
           stakingBreakdown.push({
             poolAddress: poolAddr,
             amount: formattedAmount,
-            type: protocol ? 'liquid_staking' : 'validator',
-            protocol
+            type: 'validator',
           });
           
           totalStaked += amount;
+          console.log(`✓ Found validator staking: ${poolAddr}: ${formattedAmount}`);
         }
       }
-      
+    }
+    
+    if (totalStaked > 0n) {
       stakedApt = formatUnits(totalStaked.toString(), 8);
-      console.log('✓ Staked APT:', stakedApt, 'across', stakingBreakdown.length, 'pools');
+      console.log('✓ Total Staked APT:', stakedApt, 'across', stakingBreakdown.length, 'pool(s)');
+    } else {
+      console.log('⚠️ No staking positions found');
     }
 
     // Parse NFTs with CDN and metadata fallback
