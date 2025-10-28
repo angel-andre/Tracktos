@@ -26,26 +26,30 @@ serve(async (req) => {
     console.log(`Fetching trending ${type} for ${network}`);
 
     if (type === 'collections') {
-      // Query for top NFT collections by volume and activity
+      // Query for top NFT collections
       const query = `
         query TrendingCollections {
-          current_collections_v2(
+          current_token_datas_v2(
             limit: 10
-            order_by: [
-              {last_transaction_version: desc}
-            ]
+            order_by: {last_transaction_version: desc}
             where: {
-              max_supply: {_gt: "100"}
+              is_fungible_v2: {_eq: false}
+              current_collection: {
+                current_supply: {_gt: "100"}
+              }
             }
+            distinct_on: collection_id
           ) {
             collection_id
-            collection_name
-            creator_address
-            current_supply
-            max_supply
-            total_minted_v2
-            uri
-            description
+            token_name
+            current_collection {
+              collection_name
+              creator_address
+              current_supply
+              max_supply
+              uri
+              description
+            }
           }
         }
       `;
@@ -59,35 +63,45 @@ serve(async (req) => {
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('GraphQL error:', errorText);
         throw new Error(`GraphQL request failed: ${response.statusText}`);
       }
 
       const data = await response.json();
-      console.log('Collections data fetched:', data.data?.current_collections_v2?.length);
+      console.log('Collections data fetched:', data.data?.current_token_datas_v2?.length);
+
+      // Transform to match expected format
+      const collections = (data.data?.current_token_datas_v2 || []).map((item: any) => ({
+        collection_name: item.current_collection?.collection_name || 'Unknown',
+        creator_address: item.current_collection?.creator_address || '',
+        current_supply: parseInt(item.current_collection?.current_supply || '0'),
+        max_supply: item.current_collection?.max_supply || '0',
+        total_minted_v2: parseInt(item.current_collection?.current_supply || '0')
+      }));
 
       return new Response(
         JSON.stringify({
-          collections: data.data?.current_collections_v2 || [],
+          collections: collections,
           source: 'aptos_indexer'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else if (type === 'wallets') {
-      // Query for top wallets by coin balance and activity
+      // Query for top wallets by coin balance
       const query = `
         query TrendingWallets {
-          current_coin_balances(
+          current_fungible_asset_balances(
             limit: 10
             order_by: {amount: desc}
             where: {
-              coin_type: {_eq: "0x1::aptos_coin::AptosCoin"}
+              asset_type: {_eq: "0x1::aptos_coin::AptosCoin"}
               amount: {_gt: "100000000"}
             }
           ) {
             owner_address
             amount
-            coin_type
-            last_transaction_version
+            asset_type
           }
         }
       `;
@@ -105,10 +119,10 @@ serve(async (req) => {
       }
 
       const data = await response.json();
-      console.log('Wallets data fetched:', data.data?.current_coin_balances?.length);
+      console.log('Wallets data fetched:', data.data?.current_fungible_asset_balances?.length);
 
       // Get additional stats for each wallet
-      const wallets = data.data?.current_coin_balances || [];
+      const wallets = data.data?.current_fungible_asset_balances || [];
       const enrichedWallets = await Promise.all(
         wallets.slice(0, 4).map(async (wallet: any) => {
           // Query for NFT count
@@ -118,6 +132,7 @@ serve(async (req) => {
                 where: {
                   owner_address: {_eq: $owner}
                   amount: {_gt: "0"}
+                  is_soulbound_v2: {_eq: false}
                 }
               ) {
                 aggregate {
@@ -143,16 +158,14 @@ serve(async (req) => {
             return {
               address: wallet.owner_address,
               aptBalance: wallet.amount,
-              nftCount: nftCount,
-              lastActivity: wallet.last_transaction_version
+              nftCount: nftCount
             };
           } catch (error) {
             console.error(`Error fetching NFT count for ${wallet.owner_address}:`, error);
             return {
               address: wallet.owner_address,
               aptBalance: wallet.amount,
-              nftCount: 0,
-              lastActivity: wallet.last_transaction_version
+              nftCount: 0
             };
           }
         })
