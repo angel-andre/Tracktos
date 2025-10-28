@@ -158,7 +158,7 @@ export function ShareExportCard({
       contentDiv.innerHTML = `
         <div style="color: white; max-width: 60%; padding-right: 40px; height: 100%; display: flex; flex-direction: column;">
           <div style="text-align: left; margin-bottom: 14px;">
-            <h1 style="font-size: 40px; font-weight: bold; margin-bottom: 6px; color: #60a5fa; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">Tracktos</h1>
+            <h1 style="font-size: 40px; font-weight: bold; margin-bottom: 6px; color: #22c55e; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">Tracktos</h1>
             <p style="font-size: 14px; color: #e5e7eb; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">Wallet Milestones & Analytics</p>
           </div>
           
@@ -168,7 +168,7 @@ export function ShareExportCard({
           </div>
 
           <div style="margin-bottom: 12px;">
-            <h2 style="font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #60a5fa;">📊 Key Metrics</h2>
+            <h2 style="font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #22c55e;">📊 Key Metrics</h2>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
               <div style="background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
                 <p style="font-size: 9px; color: #9ca3af; margin-bottom: 3px;">Wallet Age</p>
@@ -190,7 +190,7 @@ export function ShareExportCard({
           </div>
 
           <div style="margin-bottom: 12px;">
-            <h2 style="font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #60a5fa;">🏅 Comparative Rankings</h2>
+            <h2 style="font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #22c55e;">🏅 Comparative Rankings</h2>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
               <div style="background: rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
                 <span style="font-size: 10px; color: #e5e7eb;">Portfolio Value</span>
@@ -220,7 +220,7 @@ export function ShareExportCard({
           </div>
 
           <div style="margin-bottom: 12px; flex-shrink: 0;">
-            <h2 style="font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #60a5fa;">🎖️ Achievement Badges</h2>
+            <h2 style="font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #22c55e;">🎖️ Achievement Badges</h2>
             <div style="display: flex; flex-wrap: wrap; gap: 5px;">
               ${badgesHtml}
             </div>
