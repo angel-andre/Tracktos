@@ -6,6 +6,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
 import pepeCardBg from "@/assets/pepe-card-bg.png";
+import aptosLogoWhite from "@/assets/aptos-logo-white.png";
 
 interface WalletIdentityData {
   activeDays: number;
@@ -137,6 +138,15 @@ export function ShareExportCard({
         : '<p style="font-size: 13px; color: #9ca3af; text-align: center;">No badges earned yet</p>';
 
       snapshotDiv.appendChild(overlay);
+      
+      // Add Aptos logo in top right corner
+      const logoDiv = document.createElement("div");
+      logoDiv.style.position = "absolute";
+      logoDiv.style.top = "40px";
+      logoDiv.style.right = "40px";
+      logoDiv.style.zIndex = "2";
+      logoDiv.innerHTML = `<img src="${aptosLogoWhite}" style="width: 80px; height: 80px; opacity: 0.9;" alt="Aptos" />`;
+      snapshotDiv.appendChild(logoDiv);
       
       const contentDiv = document.createElement("div");
       contentDiv.style.position = "relative";
