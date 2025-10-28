@@ -188,7 +188,7 @@ serve(async (req) => {
         'WBTC': 'wrapped-bitcoin',
         'CELL': 'cellena-finance',
         'WAR': 'war-coin',
-        'STKAPT': 'staked-aptos',
+        'STKAPT': 'aptos', // Use APT price as fallback for staked tokens
         'ZUSDC': 'usd-coin',
         'DAI': 'dai',
         'USDD': 'usdd',
@@ -489,12 +489,14 @@ serve(async (req) => {
         if (isAPT) {
           aptRaw += raw;
         } else {
-          // Normalize staked APT variants to STKAPT for consistent price lookup
+          // Normalize staked APT variants to use APT pricing
           const symUpper = symbol.toUpperCase();
-          if (symUpper === 'STKAPT' || symUpper === 'STKAPT' || symUpper === 'STAPT' || 
-              name.toLowerCase().includes('staked') && (name.toLowerCase().includes('aptos') || name.toLowerCase().includes('apt'))) {
-            symbol = 'STKAPT';
-            console.log(`✓ Normalized staked APT variant: ${metadata.symbol} -> STKAPT`);
+          const nameNorm = name.toLowerCase();
+          if (symUpper === 'STKAPT' || symUpper === 'STAPT' || 
+              (nameNorm.includes('staked') && (nameNorm.includes('aptos') || nameNorm.includes('apt'))) ||
+              nameNorm.includes('staked-aptos') || nameNorm.includes('staked apt')) {
+            // Keep original symbol but will use APT pricing
+            console.log(`✓ Detected staked APT variant: ${symbol} (${name})`);
           }
           
           tokens.push({ name, symbol, balance });
@@ -730,7 +732,17 @@ serve(async (req) => {
 
     // Enrich tokens with USD data
     const tokensWithUsd = tokens.map(token => {
-      const usdPrice = priceMap.get(token.symbol.toUpperCase()) || 0;
+      let usdPrice = priceMap.get(token.symbol.toUpperCase()) || 0;
+      
+      // Special handling for staked APT variants - use APT price
+      const nameNorm = token.name.toLowerCase();
+      const symUpper = token.symbol.toUpperCase();
+      if (usdPrice === 0 && (symUpper === 'STKAPT' || symUpper === 'STAPT' || 
+          nameNorm.includes('staked') && (nameNorm.includes('aptos') || nameNorm.includes('apt')))) {
+        usdPrice = priceMap.get('APT') || 0;
+        console.log(`✓ Using APT price $${usdPrice} for staked variant: ${token.symbol}`);
+      }
+      
       const balance = parseFloat(token.balance) || 0;
       const usdValue = balance * usdPrice;
       const logoUrl = logoUrls[token.symbol.toUpperCase()] || '';
