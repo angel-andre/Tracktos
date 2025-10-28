@@ -665,8 +665,10 @@ serve(async (req) => {
       if (delResp.ok) {
         const delJson = await delResp.json();
         const balances: Array<{ pool_address: string; pool_type: string; shares: string }> = delJson?.data?.current_delegator_balances || [];
+        console.log(`Delegator balances rows: ${balances.length}`);
         if (balances.length > 0) {
           const poolAddresses = Array.from(new Set(balances.map(b => b.pool_address).filter(Boolean)));
+          console.log('Delegator pool addresses:', JSON.stringify(poolAddresses));
           if (poolAddresses.length > 0) {
             const poolsQuery = `
               query GetPools($addresses: [String!]) {
@@ -684,6 +686,7 @@ serve(async (req) => {
             if (poolsResp.ok) {
               const poolsJson = await poolsResp.json();
               const pools: Array<{ staking_pool_address: string; total_coins: string; total_shares: string }> = poolsJson?.data?.current_delegated_staking_pool_balances || [];
+              console.log(`Fetched pool totals: ${pools.length}`);
               const totalsMap = new Map(pools.map(p => [p.staking_pool_address, {
                 totalCoins: BigInt(String(p.total_coins || '0')),
                 totalShares: BigInt(String(p.total_shares || '0')),
@@ -715,6 +718,38 @@ serve(async (req) => {
       }
     } catch (e) {
       console.log('Delegated staking balances lookup failed:', e);
+    }
+
+    // Additional fallback: direct staking_contract resource on account (non-delegation contract)
+    if (!foundDelegatedViaBalances) {
+      try {
+        const primaryBase = network === 'testnet'
+          ? 'https://fullnode.testnet.aptoslabs.com/v1'
+          : 'https://fullnode.mainnet.aptoslabs.com/v1';
+        const altBase = network === 'testnet'
+          ? 'https://api.testnet.aptoslabs.com/v1'
+          : 'https://api.mainnet.aptoslabs.com/v1';
+        const path = `/accounts/${address}/resource/0x1::staking_contract::StakingContract`;
+        const fetchRes = async (base: string) => {
+          const r = await fetch(`${base}${path}`, { headers: { 'Accept': 'application/json' } });
+          if (!r.ok) throw new Error(String(r.status));
+          const js = await r.json();
+          const d = js?.data ?? js;
+          const principalRaw = String(d?.principal ?? '0').replace(/\D/g, '') || '0';
+          const poolAddr = String(d?.pool_address ?? '');
+          return { principal: BigInt(principalRaw), poolAddr };
+        };
+        let res: { principal: bigint; poolAddr: string } | null = null;
+        try { res = await fetchRes(primaryBase); } catch (_) { try { res = await fetchRes(altBase); } catch { res = null; } }
+        if (res && res.principal > 0n) {
+          const formattedAmount = formatUnits(String(res.principal), 8);
+          stakingBreakdown.push({ poolAddress: res.poolAddr || 'staking_contract', amount: formattedAmount, type: 'validator' });
+          totalStaked += res.principal;
+          console.log(`✓ Found validator staking via staking_contract: ${res.poolAddr} ${formattedAmount}`);
+        }
+      } catch (e) {
+        console.log('staking_contract lookup failed');
+      }
     }
 
     // Fallback: derive from delegated_staking_activities if no balances were found
