@@ -606,24 +606,43 @@ serve(async (req) => {
       'Liquid Staked Aptos': { protocol: 'Thala Labs', assetType: '0xfaf4e633ae9eb31366c9ca24214231760926576c7b625313b3688b5e900731f6::staking::ThalaAPT' },
     };
     
-    for (const asset of data.current_fungible_asset_balances) {
-      const metaName = asset.metadata?.name || '';
-      if (liquidStakingTokens[metaName]) {
-        const amount = BigInt(asset.amount);
-        if (amount > 0n) {
-          const formattedAmount = formatUnits(amount.toString(), asset.metadata?.decimals || 8);
-          const { protocol, assetType } = liquidStakingTokens[metaName];
-          
-          stakingBreakdown.push({
-            poolAddress: assetType,
-            amount: formattedAmount,
-            type: 'liquid_staking',
-            protocol
-          });
-          
-          totalStaked += amount;
-          console.log(`✓ Found liquid staking: ${metaName} (${protocol}): ${formattedAmount}`);
-        }
+    // Use full FA list for detection; match by asset_type, symbol or name
+    const lstByAssetType = new Map(Object.values(liquidStakingTokens).map(v => [v.assetType, v.protocol]));
+    const lstByName = new Map(Object.entries(liquidStakingTokens).map(([name, v]) => [name, v]));
+    const lstSymbols: Record<string, { protocol: string }> = {
+      'tAPT': { protocol: 'Tortuga Finance' },
+      'amAPT': { protocol: 'Amnis Finance' },
+      'stAPT': { protocol: 'Ditto Finance' },
+      'THALAAPT': { protocol: 'Thala Labs' },
+    };
+
+    for (const fa of faAll) {
+      const assetType = fa.asset_type || '';
+      const meta = fa.metadata || {};
+      const name = meta.name || '';
+      const symbol = (meta.symbol || '').toUpperCase();
+      const rawAmount = BigInt(String(fa.amount).replace(/\D/g, '') || '0');
+      if (rawAmount <= 0n) continue;
+
+      let protocol: string | undefined;
+      if (lstByAssetType.has(assetType)) {
+        protocol = lstByAssetType.get(assetType);
+      } else if (lstByName.has(name)) {
+        protocol = lstByName.get(name)?.protocol;
+      } else if (lstSymbols[symbol]) {
+        protocol = lstSymbols[symbol].protocol;
+      }
+
+      if (protocol) {
+        const formattedAmount = formatUnits(String(rawAmount), Number(meta.decimals ?? 8));
+        stakingBreakdown.push({
+          poolAddress: assetType || name,
+          amount: formattedAmount,
+          type: 'liquid_staking',
+          protocol,
+        });
+        totalStaked += rawAmount;
+        console.log(`✓ Found liquid staking: ${symbol || name} (${protocol}): ${formattedAmount}`);
       }
     }
     

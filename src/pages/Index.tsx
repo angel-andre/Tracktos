@@ -30,6 +30,12 @@ interface AccountData {
   address: string;
   aptBalance: string;
   stakedApt: string;
+  stakingBreakdown?: Array<{
+    poolAddress: string;
+    amount: string;
+    type: 'validator' | 'liquid_staking';
+    protocol?: string;
+  }>;
   firstTransactionTimestamp?: string;
   lastTransactionTimestamp?: string;
   usdChange24h: number;

@@ -188,13 +188,16 @@ export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0,
                   </p>
                 )}
               </div>
-              {data.stakedApt !== '0' && (
-                <div className="p-4 rounded-lg bg-gradient-to-br from-accent/10 to-accent/5 border border-accent/20">
-                  <p className="text-sm text-muted-foreground mb-1">Staked</p>
-                  <p className="text-2xl font-bold text-accent">{formatTokenAmount(data.stakedApt, 'APT')}</p>
-                  
-                  {/* Staking Breakdown */}
-                  {data.stakingBreakdown && data.stakingBreakdown.length > 0 && (
+              <div className="p-4 rounded-lg bg-gradient-to-br from-accent/10 to-accent/5 border border-accent/20">
+                <p className="text-sm text-muted-foreground mb-1">Staked</p>
+                <p className="text-2xl font-bold text-accent">{formatTokenAmount(data.stakedApt, 'APT')}</p>
+                {data.stakedApt === '0' ? (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    No active staking detected (validator or liquid).
+                  </p>
+                ) : (
+                  // Staking Breakdown
+                  data.stakingBreakdown && data.stakingBreakdown.length > 0 && (
                     <div className="mt-3 space-y-2">
                       <p className="text-xs text-muted-foreground font-semibold">Staked with:</p>
                       {data.stakingBreakdown.map((stake, index) => (
@@ -233,9 +236,9 @@ export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0,
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
-              )}
+                  )
+                )}
+              </div>
             </div>
             
             {/* Wallet Activity Metrics */}
