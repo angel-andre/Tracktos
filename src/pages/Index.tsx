@@ -15,6 +15,8 @@ import { WalletIdentityCard } from "@/components/dashboard/WalletIdentityCard";
 import { TransactionAnalyticsCard } from "@/components/dashboard/TransactionAnalyticsCard";
 import { DeFiActivityCard } from "@/components/dashboard/DeFiActivityCard";
 import { ShareExportCard } from "@/components/dashboard/ShareExportCard";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Info } from "lucide-react";
 import aptosLogo from "@/assets/aptos-logo.png";
 
 interface AccountData {
@@ -164,6 +166,14 @@ export default function IndexPage() {
   return (
     <div className="min-h-screen bg-background py-8 px-4">
       <div className="max-w-7xl mx-auto space-y-8">
+        {/* Beta Banner */}
+        <Alert className="bg-primary/10 border-primary/30">
+          <Info className="h-4 w-4 text-primary" />
+          <AlertDescription className="text-foreground">
+            Still in beta, doing public testing
+          </AlertDescription>
+        </Alert>
+
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-3 mb-2">
