@@ -1,7 +1,9 @@
-import { Wallet } from "lucide-react";
+import { Wallet, Copy, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 import {
   Tooltip,
   TooltipContent,
@@ -60,9 +62,32 @@ const calculateSentiment = (
 };
 
 export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0, tokenCount = 0, sentimentReasons = [] }: AccountCardProps) {
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
+  
   const sentiment = data 
     ? calculateSentiment(transactionCount, nftCount, tokenCount, parseFloat(data.stakedApt))
     : 50;
+  
+  const handleCopyAddress = async () => {
+    if (!data?.address) return;
+    
+    try {
+      await navigator.clipboard.writeText(data.address);
+      setCopied(true);
+      toast({
+        title: "Address copied!",
+        description: "Wallet address copied to clipboard",
+      });
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      toast({
+        title: "Failed to copy",
+        description: "Could not copy address to clipboard",
+        variant: "destructive",
+      });
+    }
+  };
   
   const getSentimentLabel = (score: number) => {
     if (score >= 75) return { text: "Very Bullish", color: "text-green-500" };
@@ -114,8 +139,20 @@ export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0,
       <CardContent>
         {data ? (
           <div className="space-y-4">
-            <div className="p-3 rounded-lg bg-secondary/50 backdrop-blur">
-              <p className="text-sm text-muted-foreground mb-1">Address</p>
+            <div 
+              className="p-3 rounded-lg bg-secondary/50 backdrop-blur cursor-pointer hover:bg-secondary/70 transition-colors group"
+              onClick={handleCopyAddress}
+            >
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <p className="text-sm text-muted-foreground">Address</p>
+                <div className="flex items-center gap-1">
+                  {copied ? (
+                    <Check className="w-4 h-4 text-green-500" />
+                  ) : (
+                    <Copy className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </div>
+              </div>
               <p className="font-mono text-xs break-all text-foreground">{data.address}</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
