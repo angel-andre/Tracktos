@@ -478,7 +478,7 @@ serve(async (req) => {
       const raw = rawDigits ? BigInt(rawDigits) : 0n;
       if (raw > 0n) {
         const metadata = fa.metadata || {};
-        const symbol: string = metadata.symbol || 'FA';
+        let symbol: string = metadata.symbol || 'FA';
         const name: string = metadata.name || symbol;
         const decimals = Number(metadata.decimals ?? 8);
         const balance = formatUnits(String(raw), decimals);
@@ -489,6 +489,14 @@ serve(async (req) => {
         if (isAPT) {
           aptRaw += raw;
         } else {
+          // Normalize staked APT variants to STKAPT for consistent price lookup
+          const symUpper = symbol.toUpperCase();
+          if (symUpper === 'STKAPT' || symUpper === 'STKAPT' || symUpper === 'STAPT' || 
+              name.toLowerCase().includes('staked') && (name.toLowerCase().includes('aptos') || name.toLowerCase().includes('apt'))) {
+            symbol = 'STKAPT';
+            console.log(`✓ Normalized staked APT variant: ${metadata.symbol} -> STKAPT`);
+          }
+          
           tokens.push({ name, symbol, balance });
           tokenAssetTypes[symbol.toUpperCase()] = assetType;
           console.log('✓ FA:', symbol, balance);
