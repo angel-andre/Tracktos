@@ -22,6 +22,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info } from "lucide-react";
 import aptosLogo from "@/assets/aptos-logo.png";
 
+const DEMO_WALLET = "0x0485e419a2cd8ba9fc159b0ca6a27b4c326033910bec559f4559893f24ccbedd";
+
 interface AccountData {
   address: string;
   aptBalance: string;
@@ -255,6 +257,13 @@ export default function IndexPage() {
     }
   };
 
+  const handleTryDemo = () => {
+    setAddress(DEMO_WALLET);
+    setShowNewWalletInput(false);
+    setSearchParams({ address: DEMO_WALLET, network });
+    loadStatsFromUrl(DEMO_WALLET, network);
+  };
+
   return (
     <div className="min-h-screen bg-background py-8 px-4">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -276,6 +285,15 @@ export default function IndexPage() {
             <Sparkles className="w-6 h-6 text-primary" />
           </div>
           <p className="text-muted-foreground">Explore your Aptos adventure through wallet analytics and insights</p>
+          <Button
+            onClick={handleTryDemo}
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            disabled={loading}
+          >
+            Try Demo
+          </Button>
         </div>
 
         {/* Control Panel */}
