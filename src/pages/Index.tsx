@@ -21,6 +21,7 @@ import { ShareExportCard } from "@/components/dashboard/ShareExportCard";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info } from "lucide-react";
 import aptosLogo from "@/assets/aptos-logo.png";
+import tracktosLogo from "@/assets/tracktos-logo.png";
 import { useToast } from "@/hooks/use-toast";
 
 const DEMO_WALLET = "0x632dad777e05538c1ce47fad67ad801d242b481e45adfbc058a45e59851c3907";
@@ -341,7 +342,7 @@ export default function IndexPage() {
             <h1 className="text-4xl font-bold text-white">
               Tracktos
             </h1>
-            <Sparkles className="w-6 h-6 text-primary" />
+            <img src={tracktosLogo} alt="Tracktos Logo" className="w-6 h-6" />
           </div>
           <p className="text-muted-foreground">Explore your Aptos adventure through wallet analytics and insights</p>
           <Button
