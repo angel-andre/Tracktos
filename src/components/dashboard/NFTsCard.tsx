@@ -44,12 +44,17 @@ const buildImageCandidates = (u: string): string[] => {
   const ipfsPath = extractIpfsPath(u);
   if (ipfsPath) {
     const gateways = [
-      `https://cloudflare-ipfs.com/ipfs/${ipfsPath}`,
       `https://ipfs.io/ipfs/${ipfsPath}`,
-      `https://nftstorage.link/ipfs/${ipfsPath}`,
+      `https://cloudflare-ipfs.com/ipfs/${ipfsPath}`,
       `https://dweb.link/ipfs/${ipfsPath}`,
+      `https://nftstorage.link/ipfs/${ipfsPath}`,
+      `https://w3s.link/ipfs/${ipfsPath}`,
+      `https://4everland.io/ipfs/${ipfsPath}`,
       `https://gateway.pinata.cloud/ipfs/${ipfsPath}`,
       `https://ipfs.cf-ipfs.com/ipfs/${ipfsPath}`,
+      `https://hardbin.com/ipfs/${ipfsPath}`,
+      `https://gateway.ipfs.io/ipfs/${ipfsPath}`,
+      `https://ipfs.filebase.io/ipfs/${ipfsPath}`,
       `https://gw3.io/ipfs/${ipfsPath}`,
     ];
     gateways.forEach(pushUnique);
@@ -93,19 +98,19 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
 
     const loadImage = async () => {
       if (!src) return;
-      try {
-        const shouldAssumeJson = src.endsWith('.json');
-        let res: Response | null = null;
         try {
-          res = await fetch(src, { 
-            headers: { accept: 'application/json,image/*' },
-            signal: AbortSignal.timeout(5000)
-          });
-        } catch {
-          // If CORS or timeout, try the URL directly as an image
-          if (!cancelled) setFinalSrc(src);
-          return;
-        }
+          const shouldAssumeJson = src.endsWith('.json');
+          let res: Response | null = null;
+          try {
+            res = await fetch(src, { 
+              headers: { accept: 'application/json,image/*' },
+              signal: AbortSignal.timeout(8000)
+            });
+          } catch {
+            // If CORS or timeout, try the URL directly as an image
+            if (!cancelled) setFinalSrc(src);
+            return;
+          }
 
         if (res && res.ok) {
           const ctype = res.headers.get('content-type') || '';
@@ -231,80 +236,6 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
 export function NFTsCard({ nfts, loading, network = "mainnet" }: NFTsCardProps) {
   const [selectedCollection, setSelectedCollection] = React.useState<string>("all");
   const [sortBy, setSortBy] = React.useState<string>("default");
-  const [imagesLoading, setImagesLoading] = React.useState(true);
-  const [preloadedImages, setPreloadedImages] = React.useState<Map<string, string>>(new Map());
-
-  // Pre-load all images when NFTs data changes
-  React.useEffect(() => {
-    if (!nfts || nfts.length === 0 || loading) {
-      setImagesLoading(false);
-      return;
-    }
-
-    setImagesLoading(true);
-    const imageMap = new Map<string, string>();
-
-    const testImageLoad = (url: string): Promise<boolean> => {
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => resolve(true);
-        img.onerror = () => resolve(false);
-        img.src = url;
-        setTimeout(() => resolve(false), 5000);
-      });
-    };
-
-    const preloadAllImages = async () => {
-      const imagePromises = nfts.map(async (nft) => {
-        const candidates = buildImageCandidates(nft.image);
-        
-        for (const candidate of candidates) {
-          try {
-            const res = await fetch(candidate, {
-              headers: { accept: 'application/json,image/*' },
-              signal: AbortSignal.timeout(5000)
-            });
-
-            if (res && res.ok) {
-              const ctype = res.headers.get('content-type') || '';
-              const isJson = candidate.endsWith('.json') || ctype.includes('application/json');
-              
-              if (isJson) {
-                const metadata = await res.json();
-                const imageUrl = metadata?.image || metadata?.image_url || metadata?.imageUrl || 
-                                metadata?.imageURI || metadata?.uri || metadata?.media ||
-                                metadata?.animation_url || metadata?.properties?.image;
-                
-                if (imageUrl) {
-                  const imgCandidates = buildImageCandidates(imageUrl);
-                  for (const imgUrl of imgCandidates) {
-                    if (await testImageLoad(imgUrl)) {
-                      imageMap.set(nft.image, imgUrl);
-                      return;
-                    }
-                  }
-                }
-              } else {
-                if (await testImageLoad(candidate)) {
-                  imageMap.set(nft.image, candidate);
-                  return;
-                }
-              }
-            }
-          } catch {
-            continue;
-          }
-        }
-        imageMap.set(nft.image, nft.image);
-      });
-
-      await Promise.all(imagePromises);
-      setPreloadedImages(imageMap);
-      setImagesLoading(false);
-    };
-
-    preloadAllImages();
-  }, [nfts, loading]);
 
   const uniqueCollections = React.useMemo(() => {
     if (!nfts) return [];
@@ -420,7 +351,7 @@ export function NFTsCard({ nfts, loading, network = "mainnet" }: NFTsCardProps) 
                      <div className="aspect-square bg-muted/30 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
                       {nft.image ? (
                         <FallbackImage
-                          srcs={buildImageCandidates(preloadedImages.get(nft.image) || nft.image)}
+                          srcs={buildImageCandidates(nft.image)}
                           alt={`${nft.name} - ${nft.collection}`}
                           className="w-full h-full object-cover"
                         />
