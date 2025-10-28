@@ -101,11 +101,12 @@ export function ShareExportCard({
       // Use static background image
       const backgroundImage = pepeCardBg;
 
-      // Create a temporary container for the snapshot
+      // Create a temporary container for the snapshot (16:9 aspect ratio)
       const snapshotDiv = document.createElement("div");
       snapshotDiv.style.position = "absolute";
       snapshotDiv.style.left = "-9999px";
-      snapshotDiv.style.width = "900px";
+      snapshotDiv.style.width = "1200px";
+      snapshotDiv.style.height = "675px";
       snapshotDiv.style.padding = "40px";
       snapshotDiv.style.backgroundImage = `url(${backgroundImage})`;
       snapshotDiv.style.backgroundSize = "cover";
@@ -113,6 +114,9 @@ export function ShareExportCard({
       snapshotDiv.style.borderRadius = "16px";
       snapshotDiv.style.fontFamily = "system-ui, -apple-system, sans-serif";
       snapshotDiv.style.position = "relative";
+      snapshotDiv.style.display = "flex";
+      snapshotDiv.style.flexDirection = "column";
+      snapshotDiv.style.justifyContent = "space-between";
       
       // Add a semi-transparent overlay for better text readability
       const overlay = document.createElement("div");
@@ -139,78 +143,78 @@ export function ShareExportCard({
       contentDiv.style.zIndex = "1";
       
       contentDiv.innerHTML = `
-        <div style="color: white;">
-          <div style="text-align: center; margin-bottom: 24px;">
-            <h1 style="font-size: 40px; font-weight: bold; margin-bottom: 6px; color: #60a5fa; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">Tracktos</h1>
-            <p style="font-size: 15px; color: #e5e7eb; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">Wallet Milestones & Analytics</p>
+        <div style="color: white; max-width: 60%; padding-right: 40px;">
+          <div style="text-align: left; margin-bottom: 20px;">
+            <h1 style="font-size: 48px; font-weight: bold; margin-bottom: 6px; color: #60a5fa; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">Tracktos</h1>
+            <p style="font-size: 16px; color: #e5e7eb; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">Wallet Milestones & Analytics</p>
           </div>
           
-          <div style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.1);">
-            <p style="font-size: 12px; color: #9ca3af; margin-bottom: 6px;">Wallet Address</p>
-            <p style="font-size: 14px; font-weight: 500; word-break: break-all;">${address}</p>
+          <div style="background: rgba(255,255,255,0.05); padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.1);">
+            <p style="font-size: 11px; color: #9ca3af; margin-bottom: 4px;">Wallet Address</p>
+            <p style="font-size: 13px; font-weight: 500; word-break: break-all;">${address}</p>
           </div>
 
-          <div style="margin-bottom: 20px;">
-            <h2 style="font-size: 16px; font-weight: bold; margin-bottom: 12px; color: #60a5fa;">📊 Key Metrics</h2>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px;">
-              <div style="background: rgba(255,255,255,0.05); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                <p style="font-size: 11px; color: #9ca3af; margin-bottom: 4px;">Wallet Age</p>
-                <p style="font-size: 18px; font-weight: bold;">${formattedWalletAge}</p>
-              </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                <p style="font-size: 11px; color: #9ca3af; margin-bottom: 4px;">Active Days</p>
-                <p style="font-size: 18px; font-weight: bold;">${walletIdentity?.activeDays || 0}</p>
-              </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                <p style="font-size: 11px; color: #9ca3af; margin-bottom: 4px;">Transactions</p>
-                <p style="font-size: 18px; font-weight: bold;">${transactionCount.toLocaleString()}</p>
-              </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                <p style="font-size: 11px; color: #9ca3af; margin-bottom: 4px;">Gas Spent</p>
-                <p style="font-size: 18px; font-weight: bold;">${gasSpent.toFixed(2)} APT</p>
-              </div>
-            </div>
-          </div>
-
-          <div style="margin-bottom: 20px;">
-            <h2 style="font-size: 16px; font-weight: bold; margin-bottom: 12px; color: #60a5fa;">🏅 Comparative Rankings</h2>
+          <div style="margin-bottom: 16px;">
+            <h2 style="font-size: 15px; font-weight: bold; margin-bottom: 10px; color: #60a5fa;">📊 Key Metrics</h2>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-              <div style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 12px; color: #e5e7eb;">Portfolio Value</span>
-                <span style="font-size: 12px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(portfolioPercentile)}</span>
+              <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                <p style="font-size: 10px; color: #9ca3af; margin-bottom: 4px;">Wallet Age</p>
+                <p style="font-size: 16px; font-weight: bold;">${formattedWalletAge}</p>
               </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 12px; color: #e5e7eb;">Transaction Volume</span>
-                <span style="font-size: 12px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(txPercentile)}</span>
+              <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                <p style="font-size: 10px; color: #9ca3af; margin-bottom: 4px;">Active Days</p>
+                <p style="font-size: 16px; font-weight: bold;">${walletIdentity?.activeDays || 0}</p>
               </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 12px; color: #e5e7eb;">Activity Level</span>
-                <span style="font-size: 12px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(activityPercentile)}</span>
+              <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                <p style="font-size: 10px; color: #9ca3af; margin-bottom: 4px;">Transactions</p>
+                <p style="font-size: 16px; font-weight: bold;">${transactionCount.toLocaleString()}</p>
               </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 12px; color: #e5e7eb;">Gas Contribution</span>
-                <span style="font-size: 12px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(gasPercentile)}</span>
-              </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 12px; color: #e5e7eb;">Token Diversity</span>
-                <span style="font-size: 12px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(diversityPercentile)}</span>
-              </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 12px; color: #e5e7eb;">NFT Holdings</span>
-                <span style="font-size: 12px; font-weight: bold; color: #60a5fa;">${nftCount} NFTs</span>
+              <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
+                <p style="font-size: 10px; color: #9ca3af; margin-bottom: 4px;">Gas Spent</p>
+                <p style="font-size: 16px; font-weight: bold;">${gasSpent.toFixed(2)} APT</p>
               </div>
             </div>
           </div>
 
-          <div style="margin-bottom: 20px;">
-            <h2 style="font-size: 16px; font-weight: bold; margin-bottom: 12px; color: #60a5fa;">🎖️ Achievement Badges</h2>
-            <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;">
+          <div style="margin-bottom: 16px;">
+            <h2 style="font-size: 15px; font-weight: bold; margin-bottom: 10px; color: #60a5fa;">🏅 Comparative Rankings</h2>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <div style="background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 11px; color: #e5e7eb;">Portfolio Value</span>
+                <span style="font-size: 11px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(portfolioPercentile)}</span>
+              </div>
+              <div style="background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 11px; color: #e5e7eb;">Transaction Volume</span>
+                <span style="font-size: 11px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(txPercentile)}</span>
+              </div>
+              <div style="background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 11px; color: #e5e7eb;">Activity Level</span>
+                <span style="font-size: 11px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(activityPercentile)}</span>
+              </div>
+              <div style="background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 11px; color: #e5e7eb;">Gas Contribution</span>
+                <span style="font-size: 11px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(gasPercentile)}</span>
+              </div>
+              <div style="background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 11px; color: #e5e7eb;">Token Diversity</span>
+                <span style="font-size: 11px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(diversityPercentile)}</span>
+              </div>
+              <div style="background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 11px; color: #e5e7eb;">NFT Holdings</span>
+                <span style="font-size: 11px; font-weight: bold; color: #60a5fa;">${nftCount} NFTs</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <h2 style="font-size: 15px; font-weight: bold; margin-bottom: 10px; color: #60a5fa;">🎖️ Achievement Badges</h2>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
               ${badgesHtml}
             </div>
           </div>
 
-          <div style="text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);">
-            <p style="font-size: 11px; color: #e5e7eb; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">Generated with Tracktos • Aptos Wallet Analytics</p>
+          <div style="text-align: left; margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <p style="font-size: 10px; color: #e5e7eb; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">Generated with Tracktos • Aptos Wallet Analytics</p>
           </div>
         </div>
       `;
