@@ -271,7 +271,8 @@ export default function IndexPage() {
                   transactionCount={data.totalTransactionCount}
                   tokenCount={data.tokens?.length || 0}
                   nftCount={data.totalNftCount}
-                  walletAge={data.walletIdentity?.activeDays ? `${data.walletIdentity.activeDays} days` : undefined}
+                  walletAge={data.account?.firstTransactionTimestamp}
+                  walletIdentity={data.walletIdentity}
                 />
               )}
             </TabsContent>
