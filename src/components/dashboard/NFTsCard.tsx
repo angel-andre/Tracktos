@@ -1,10 +1,12 @@
 import React from "react";
-import { ImageIcon } from "lucide-react";
+import { ImageIcon, Download } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { formatNumber } from "@/lib/formatters";
 import aptosLogoWhite from "@/assets/aptos-logo-white.png";
+import { exportNFTsToCSV } from "@/lib/csvExport";
 
 interface NFT {
   name: string;
@@ -316,12 +318,25 @@ export function NFTsCard({ nfts, loading, network = "mainnet" }: NFTsCardProps) 
   return (
     <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg hover:shadow-xl transition-all duration-300">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-foreground">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <ImageIcon className="w-5 h-5 text-primary" />
-          </div>
-          NFT Collection
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <ImageIcon className="w-5 h-5 text-primary" />
+            </div>
+            NFT Collection
+          </CardTitle>
+          {nfts && nfts.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportNFTsToCSV(nfts)}
+              className="gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {nfts && nfts.length > 0 ? (

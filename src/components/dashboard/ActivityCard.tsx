@@ -1,6 +1,8 @@
-import { Activity } from "lucide-react";
+import { Activity, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { exportTransactionsToCSV } from "@/lib/csvExport";
 
 interface Transaction {
   hash: string;
@@ -40,12 +42,25 @@ export function ActivityCard({ activity, loading }: ActivityCardProps) {
   return (
     <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-lg hover:shadow-xl transition-all duration-300">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-foreground">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Activity className="w-5 h-5 text-primary" />
-          </div>
-          Recent Activity
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Activity className="w-5 h-5 text-primary" />
+            </div>
+            Recent Activity
+          </CardTitle>
+          {activity && activity.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportTransactionsToCSV(activity)}
+              className="gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {activity && activity.length > 0 ? (
