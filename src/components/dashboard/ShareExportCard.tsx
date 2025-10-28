@@ -97,15 +97,54 @@ export function ShareExportCard({
       const gasPercentile = calculatePercentile(gasSpent, [100, 50, 20, 10, 1]);
       const diversityPercentile = calculatePercentile(tokenCount, [50, 25, 15, 10, 5]);
 
+      // Generate AI background image
+      toast.info("Generating unique background...");
+      const bgResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-wallet-background`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`
+        },
+        body: JSON.stringify({
+          portfolioValue,
+          transactionCount,
+          activeDays: walletIdentity?.activeDays || 0,
+          gasSpent,
+          tokenCount,
+          nftCount,
+          badges: walletIdentity?.badges || []
+        })
+      });
+
+      if (!bgResponse.ok) {
+        const errorData = await bgResponse.json();
+        throw new Error(errorData.error || "Failed to generate background");
+      }
+
+      const { imageUrl: backgroundImage } = await bgResponse.json();
+
       // Create a temporary container for the snapshot
       const snapshotDiv = document.createElement("div");
       snapshotDiv.style.position = "absolute";
       snapshotDiv.style.left = "-9999px";
       snapshotDiv.style.width = "900px";
       snapshotDiv.style.padding = "40px";
-      snapshotDiv.style.background = "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)";
+      snapshotDiv.style.backgroundImage = `url(${backgroundImage})`;
+      snapshotDiv.style.backgroundSize = "cover";
+      snapshotDiv.style.backgroundPosition = "center";
       snapshotDiv.style.borderRadius = "16px";
       snapshotDiv.style.fontFamily = "system-ui, -apple-system, sans-serif";
+      snapshotDiv.style.position = "relative";
+      
+      // Add a semi-transparent overlay for better text readability
+      const overlay = document.createElement("div");
+      overlay.style.position = "absolute";
+      overlay.style.top = "0";
+      overlay.style.left = "0";
+      overlay.style.right = "0";
+      overlay.style.bottom = "0";
+      overlay.style.background = "rgba(0, 0, 0, 0.4)";
+      overlay.style.borderRadius = "16px";
 
       const badgesHtml = walletIdentity?.badges?.length 
         ? walletIdentity.badges.map(badge => `
@@ -115,11 +154,17 @@ export function ShareExportCard({
           `).join('')
         : '<p style="font-size: 13px; color: #9ca3af; text-align: center;">No badges earned yet</p>';
 
-      snapshotDiv.innerHTML = `
+      snapshotDiv.appendChild(overlay);
+      
+      const contentDiv = document.createElement("div");
+      contentDiv.style.position = "relative";
+      contentDiv.style.zIndex = "1";
+      
+      contentDiv.innerHTML = `
         <div style="color: white;">
           <div style="text-align: center; margin-bottom: 24px;">
-            <h1 style="font-size: 40px; font-weight: bold; margin-bottom: 6px; color: #60a5fa;">Tracktos</h1>
-            <p style="font-size: 15px; color: #9ca3af;">Wallet Milestones & Analytics</p>
+            <h1 style="font-size: 40px; font-weight: bold; margin-bottom: 6px; color: #60a5fa; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">Tracktos</h1>
+            <p style="font-size: 15px; color: #e5e7eb; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">Wallet Milestones & Analytics</p>
           </div>
           
           <div style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 10px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.1);">
@@ -173,8 +218,8 @@ export function ShareExportCard({
                 <span style="font-size: 12px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(diversityPercentile)}</span>
               </div>
               <div style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 12px; color: #e5e7eb;">Portfolio Value</span>
-                <span style="font-size: 12px; font-weight: bold; color: #60a5fa;">$${portfolioValue.toLocaleString()}</span>
+                <span style="font-size: 12px; color: #e5e7eb;">NFT Holdings</span>
+                <span style="font-size: 12px; font-weight: bold; color: #60a5fa;">${nftCount} NFTs</span>
               </div>
             </div>
           </div>
@@ -187,11 +232,12 @@ export function ShareExportCard({
           </div>
 
           <div style="text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);">
-            <p style="font-size: 11px; color: #9ca3af;">Generated with Tracktos • Aptos Wallet Analytics</p>
+            <p style="font-size: 11px; color: #e5e7eb; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">Generated with Tracktos • Aptos Wallet Analytics</p>
           </div>
         </div>
       `;
-
+      
+      snapshotDiv.appendChild(contentDiv);
       document.body.appendChild(snapshotDiv);
 
       const canvas = await html2canvas(snapshotDiv, {
@@ -328,6 +374,42 @@ export function ShareExportCard({
       pdf.text(`• ${nftCount} NFTs from various collections`, 20, yPos);
       yPos += 10;
       pdf.text(`• ${transactionCount.toLocaleString()} total on-chain interactions`, 20, yPos);
+      yPos += 10;
+      pdf.text(`• Total Portfolio Value: $${portfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 20, yPos);
+
+      // Additional Statistics
+      yPos += 20;
+      pdf.setFontSize(14);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("Network Participation", 20, yPos);
+      pdf.line(20, yPos + 2, pageWidth - 20, yPos + 2);
+      yPos += 15;
+
+      pdf.setFontSize(11);
+      pdf.setFont("helvetica", "normal");
+      
+      const avgDailyTx = walletIdentity?.activeDays && walletIdentity.activeDays > 0 
+        ? (transactionCount / walletIdentity.activeDays).toFixed(2)
+        : '0';
+      pdf.text(`• Average daily transactions: ${avgDailyTx}`, 20, yPos);
+      yPos += 10;
+      
+      const avgGasPerTx = transactionCount > 0 
+        ? (gasSpent / transactionCount).toFixed(4)
+        : '0';
+      pdf.text(`• Average gas per transaction: ${avgGasPerTx} APT`, 20, yPos);
+      yPos += 10;
+      
+      const tokensPerNFT = nftCount > 0 
+        ? (tokenCount / nftCount).toFixed(2)
+        : tokenCount.toString();
+      pdf.text(`• Tokens to NFTs ratio: ${tokensPerNFT}`, 20, yPos);
+      yPos += 10;
+      
+      const activityRate = walletIdentity?.activeDays 
+        ? ((walletIdentity.activeDays / parseInt(formattedWalletAge.split(' ')[0] || '1')) * 100).toFixed(1)
+        : '0';
+      pdf.text(`• Activity rate: ${activityRate}% (active days vs wallet age)`, 20, yPos);
 
       // Footer
       pdf.setFontSize(9);
@@ -352,7 +434,7 @@ export function ShareExportCard({
     const portfolioPercentile = calculatePercentile(portfolioValue, [100000, 50000, 10000, 1000, 100]);
     const txPercentile = calculatePercentile(transactionCount, [10000, 5000, 1000, 500, 100]);
     
-    const text = `Check out my Aptos wallet milestones! 🏆\n\n💰 Portfolio: $${portfolioValue.toLocaleString()}\n📊 Transactions: ${transactionCount.toLocaleString()}\n⚡ Active Days: ${walletIdentity?.activeDays || 0}\n🔥 Gas Spent: ${gasSpent.toFixed(2)} APT\n🏅 Rankings: ${getPercentileLabel(portfolioPercentile)} Portfolio, ${getPercentileLabel(txPercentile)} Activity\n\nAnalyze your wallet at Tracktos!`;
+    const text = `Check out my Aptos wallet milestones! 🏆\n\n💰 Portfolio: $${portfolioValue.toLocaleString()}\n📊 Transactions: ${transactionCount.toLocaleString()}\n🖼️ NFTs: ${nftCount}\n⚡ Active Days: ${walletIdentity?.activeDays || 0}\n🔥 Gas Spent: ${gasSpent.toFixed(2)} APT\n🏅 Rankings: ${getPercentileLabel(portfolioPercentile)} Portfolio, ${getPercentileLabel(txPercentile)} Activity\n\nAnalyze your wallet at Tracktos!`;
     
     const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
     window.open(twitterUrl, "_blank", "width=550,height=420");
