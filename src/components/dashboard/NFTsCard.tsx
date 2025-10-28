@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatNumber } from "@/lib/formatters";
+import aptosLogoWhite from "@/assets/aptos-logo-white.png";
 
 interface NFT {
   name: string;
@@ -200,7 +201,7 @@ const FallbackImage = ({ srcs, alt, className }: { srcs: string[]; alt: string; 
   if (failed || !src) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-muted/20">
-        <ImageIcon className="w-8 h-8 text-muted-foreground opacity-50" />
+        <img src={aptosLogoWhite} alt="Aptos Logo" className="w-12 h-12 opacity-50" />
       </div>
     );
   }
