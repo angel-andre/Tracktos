@@ -692,7 +692,7 @@ serve(async (req) => {
               for (const b of balances) {
                 const poolAddr = b.pool_address;
                 const poolType = (b.pool_type || '').toLowerCase();
-                if (poolType !== 'active') continue; // only count active stake
+                if (!poolType.includes('active')) continue; // only count active shares (e.g., 'active' or 'active_shares')
                 const shares = BigInt(String(b.shares || '0'));
                 const totals = totalsMap.get(poolAddr);
                 if (!totals || totals.totalShares <= 0n || shares <= 0n) continue;
