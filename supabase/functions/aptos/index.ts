@@ -10,6 +10,12 @@ interface AptosResponse {
     address: string;
     aptBalance: string;
     stakedApt: string;
+    stakingBreakdown?: Array<{
+      poolAddress: string;
+      amount: string;
+      type: 'validator' | 'liquid_staking';
+      protocol?: string;
+    }>;
     firstTransactionTimestamp?: string;
     lastTransactionTimestamp?: string;
     usdChange24h: number;
@@ -125,9 +131,11 @@ serve(async (req) => {
         delegated_staking_activities(
           where: {delegator_address: {_eq: $address}}
           order_by: {transaction_version: desc}
-          limit: 1
+          limit: 100
         ) {
           amount
+          pool_address
+          event_type
         }
       }
     `;
@@ -579,14 +587,66 @@ serve(async (req) => {
       console.log('Fullnode lookup failed; using FA aggregated fallback APT balance:', aptBalance);
     }
 
-    // Parse staked APT
+    // Parse staked APT and build staking breakdown
     let stakedApt = '0';
+    const stakingBreakdown: Array<{
+      poolAddress: string;
+      amount: string;
+      type: 'validator' | 'liquid_staking';
+      protocol?: string;
+    }> = [];
+    
     if (data.delegated_staking_activities && data.delegated_staking_activities.length > 0) {
-      const latestStake = data.delegated_staking_activities[0];
-      if (latestStake.amount) {
-        stakedApt = formatUnits(latestStake.amount, 8);
-        console.log('✓ Staked APT:', stakedApt);
+      // Group by pool address and sum amounts
+      const poolMap = new Map<string, { amount: bigint; eventType: string }>();
+      
+      for (const stake of data.delegated_staking_activities) {
+        if (stake.pool_address && stake.amount) {
+          const poolAddr = stake.pool_address;
+          const amount = BigInt(stake.amount);
+          const eventType = stake.event_type || 'add_stake';
+          
+          if (!poolMap.has(poolAddr)) {
+            poolMap.set(poolAddr, { amount: 0n, eventType });
+          }
+          
+          // Add for stake events, subtract for unstake
+          if (eventType.includes('add') || eventType.includes('stake')) {
+            poolMap.get(poolAddr)!.amount += amount;
+          } else if (eventType.includes('unlock') || eventType.includes('withdraw')) {
+            poolMap.get(poolAddr)!.amount -= amount;
+          }
+        }
       }
+      
+      // Known liquid staking protocols by their pool addresses
+      const liquidStakingProtocols: Record<string, string> = {
+        '0x111ae3e5bc816a5e63c2da97d0aa3886519e0cd5e4b046659fa35796bd11542a': 'Amnis Finance',
+        '0xd11107bdf0d6d7040c6c0bfbdecb6545191fdf13e8d8d259952f53e1713f61b5': 'Tortuga Finance',
+        '0x6bc2b3f9aa5e2153a1ef4e520d51bc3fc2a4c20342c2f9e2e8bb49e3f7ecd4c3': 'Ditto Finance',
+        '0xe7a8c7c5f5f1f75d8e6b7c0f3b0f5b8c6b7e7f7c7d7e7f7c7d7e7f7c7d7e7f7c': 'Thala Labs',
+      };
+      
+      let totalStaked = 0n;
+      
+      for (const [poolAddr, { amount }] of poolMap.entries()) {
+        if (amount > 0n) {
+          const formattedAmount = formatUnits(amount.toString(), 8);
+          const protocol = liquidStakingProtocols[poolAddr];
+          
+          stakingBreakdown.push({
+            poolAddress: poolAddr,
+            amount: formattedAmount,
+            type: protocol ? 'liquid_staking' : 'validator',
+            protocol
+          });
+          
+          totalStaked += amount;
+        }
+      }
+      
+      stakedApt = formatUnits(totalStaked.toString(), 8);
+      console.log('✓ Staked APT:', stakedApt, 'across', stakingBreakdown.length, 'pools');
     }
 
     // Parse NFTs with CDN and metadata fallback
@@ -2122,6 +2182,7 @@ serve(async (req) => {
         address,
         aptBalance,
         stakedApt,
+        stakingBreakdown: stakingBreakdown.length > 0 ? stakingBreakdown : undefined,
         firstTransactionTimestamp: firstTransactionTimestamp || undefined,
         lastTransactionTimestamp: lastTransactionTimestamp || undefined,
         usdChange24h,

@@ -16,6 +16,12 @@ interface AccountData {
   address: string;
   aptBalance: string;
   stakedApt: string;
+  stakingBreakdown?: Array<{
+    poolAddress: string;
+    amount: string;
+    type: 'validator' | 'liquid_staking';
+    protocol?: string;
+  }>;
   firstTransactionTimestamp?: string;
   lastTransactionTimestamp?: string;
   usdChange24h: number;
@@ -186,6 +192,48 @@ export function AccountCard({ data, loading, transactionCount = 0, nftCount = 0,
                 <div className="p-4 rounded-lg bg-gradient-to-br from-accent/10 to-accent/5 border border-accent/20">
                   <p className="text-sm text-muted-foreground mb-1">Staked</p>
                   <p className="text-2xl font-bold text-accent">{formatTokenAmount(data.stakedApt, 'APT')}</p>
+                  
+                  {/* Staking Breakdown */}
+                  {data.stakingBreakdown && data.stakingBreakdown.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs text-muted-foreground font-semibold">Staked with:</p>
+                      {data.stakingBreakdown.map((stake, index) => (
+                        <div key={index} className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1">
+                            {stake.type === 'liquid_staking' && stake.protocol ? (
+                              <>
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                  LST
+                                </span>
+                                <span className="text-foreground font-medium">{stake.protocol}</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                  Val
+                                </span>
+                                <TooltipProvider delayDuration={300}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="text-foreground font-medium cursor-help">
+                                        Validator
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs" side="left">
+                                      <p className="text-xs break-all">{stake.poolAddress}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </>
+                            )}
+                          </div>
+                          <span className="text-accent font-semibold">
+                            {formatTokenAmount(stake.amount, 'APT')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
