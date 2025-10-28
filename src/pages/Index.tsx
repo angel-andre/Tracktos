@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getSavedWallets, saveWallet, type SavedWallet } from "@/lib/walletStorage";
 import { AccountCard } from "@/components/dashboard/AccountCard";
 import { TokensCard } from "@/components/dashboard/TokensCard";
 import { ActivityCard } from "@/components/dashboard/ActivityCard";
@@ -90,6 +92,18 @@ export default function IndexPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState<AptosData | null>(null);
+  const [savedWallets, setSavedWallets] = useState<SavedWallet[]>([]);
+  const [showNewWalletInput, setShowNewWalletInput] = useState(false);
+
+  useEffect(() => {
+    const wallets = getSavedWallets();
+    setSavedWallets(wallets);
+    if (wallets.length > 0) {
+      setAddress(wallets[0].address);
+    } else {
+      setShowNewWalletInput(true);
+    }
+  }, []);
 
   const loadStats = async () => {
     if (!address.trim()) {
@@ -118,11 +132,26 @@ export default function IndexPage() {
       }
 
       setData(responseData as AptosData);
+      
+      // Save wallet to local storage
+      saveWallet(address.trim());
+      setSavedWallets(getSavedWallets());
+      setShowNewWalletInput(false);
     } catch (err: any) {
       console.error("Error fetching Aptos data:", err);
       setError(err.message || "Failed to load wallet data. Please check the address and try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleWalletSelect = (value: string) => {
+    if (value === "new") {
+      setShowNewWalletInput(true);
+      setAddress("");
+    } else {
+      setAddress(value);
+      setShowNewWalletInput(false);
     }
   };
 
@@ -167,15 +196,38 @@ export default function IndexPage() {
           </div>
           
           <div className="flex flex-col sm:flex-row gap-3">
-            <Input
-              type="text"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Enter Aptos wallet address (0x...)"
-              className="flex-1"
-              disabled={loading}
-            />
+            {!showNewWalletInput && savedWallets.length > 0 ? (
+              <div className="flex gap-2 flex-1">
+                <Select value={address} onValueChange={handleWalletSelect}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select a wallet" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {savedWallets.map((wallet) => (
+                      <SelectItem key={wallet.address} value={wallet.address}>
+                        {wallet.label || `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="new">
+                      <div className="flex items-center gap-2">
+                        <Plus className="w-4 h-4" />
+                        Add New Wallet
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <Input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Enter Aptos wallet address (0x...)"
+                className="flex-1"
+                disabled={loading}
+              />
+            )}
             <Button
               onClick={loadStats}
               disabled={loading || !address.trim()}
