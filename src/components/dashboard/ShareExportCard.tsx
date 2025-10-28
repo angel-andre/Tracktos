@@ -5,6 +5,7 @@ import { Download, Share2, Image as ImageIcon, FileText, Loader2 } from "lucide-
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { toast } from "sonner";
+import pepeCardBg from "@/assets/pepe-card-bg.png";
 
 interface WalletIdentityData {
   activeDays: number;
@@ -97,31 +98,8 @@ export function ShareExportCard({
       const gasPercentile = calculatePercentile(gasSpent, [100, 50, 20, 10, 1]);
       const diversityPercentile = calculatePercentile(tokenCount, [50, 25, 15, 10, 5]);
 
-      // Generate AI background image
-      toast.info("Generating unique background...");
-      const bgResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-wallet-background`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`
-        },
-        body: JSON.stringify({
-          portfolioValue,
-          transactionCount,
-          activeDays: walletIdentity?.activeDays || 0,
-          gasSpent,
-          tokenCount,
-          nftCount,
-          badges: walletIdentity?.badges || []
-        })
-      });
-
-      if (!bgResponse.ok) {
-        const errorData = await bgResponse.json();
-        throw new Error(errorData.error || "Failed to generate background");
-      }
-
-      const { imageUrl: backgroundImage } = await bgResponse.json();
+      // Use static background image
+      const backgroundImage = pepeCardBg;
 
       // Create a temporary container for the snapshot
       const snapshotDiv = document.createElement("div");
