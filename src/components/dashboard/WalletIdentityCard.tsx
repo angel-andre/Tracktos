@@ -1,10 +1,11 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
   Trophy, Star, Shield, Zap, Activity, TrendingUp, Image, 
   GalleryHorizontal, Layers, Crown, Gem, Wallet as WalletIcon, 
-  Compass, Coins, Heart, Fuel, Flame, Calendar, Flame as Gas
+  Compass, Coins, Heart, Fuel, Flame, Calendar, Flame as Gas, HelpCircle
 } from "lucide-react";
 
 interface WalletIdentityData {
@@ -197,6 +198,25 @@ export function WalletIdentityCard({
           <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
             <Trophy className="w-4 h-4 text-primary" />
             Comparative Rankings
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="w-4 h-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <div className="space-y-2 text-xs">
+                    <p className="font-semibold">How Rankings are Calculated:</p>
+                    <div className="space-y-1">
+                      <p><strong>Portfolio:</strong> Top 1% = $100k+, Top 5% = $50k+, Top 10% = $10k+</p>
+                      <p><strong>Transactions:</strong> Top 1% = 10k+, Top 5% = 5k+, Top 10% = 1k+</p>
+                      <p><strong>Activity:</strong> Top 1% = 365+ days, Top 5% = 180+ days, Top 10% = 90+ days</p>
+                      <p><strong>Gas:</strong> Top 1% = 100+ APT, Top 5% = 50+ APT, Top 10% = 20+ APT</p>
+                      <p><strong>Tokens:</strong> Top 1% = 50+ tokens, Top 5% = 25+ tokens, Top 10% = 15+ tokens</p>
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {portfolioValue > 0 && (
