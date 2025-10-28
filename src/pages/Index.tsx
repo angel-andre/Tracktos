@@ -260,6 +260,8 @@ export default function IndexPage() {
                 loading={loading}
                 walletAge={data?.account?.firstTransactionTimestamp}
                 transactionCount={data?.totalTransactionCount || 0}
+                portfolioValue={data?.totalUsdValue || 0}
+                tokenCount={data?.tokens?.length || 0}
               />
             </TabsContent>
           </Tabs>

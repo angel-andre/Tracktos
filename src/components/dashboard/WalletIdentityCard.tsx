@@ -22,6 +22,8 @@ interface WalletIdentityCardProps {
   loading: boolean;
   walletAge?: string;
   transactionCount: number;
+  portfolioValue?: number;
+  tokenCount?: number;
 }
 
 const iconMap: Record<string, any> = {
@@ -67,7 +69,32 @@ const getWalletAge = (firstTxTimestamp?: string): string => {
   }
 };
 
-export function WalletIdentityCard({ data, loading, walletAge, transactionCount }: WalletIdentityCardProps) {
+const calculatePercentile = (value: number, thresholds: number[]): number => {
+  for (let i = 0; i < thresholds.length; i++) {
+    if (value >= thresholds[i]) {
+      return i + 1;
+    }
+  }
+  return thresholds.length + 1;
+};
+
+const getPercentileLabel = (percentile: number): { text: string; color: string } => {
+  if (percentile === 1) return { text: 'Top 1%', color: 'text-amber-400' };
+  if (percentile === 2) return { text: 'Top 5%', color: 'text-amber-500' };
+  if (percentile === 3) return { text: 'Top 10%', color: 'text-orange-500' };
+  if (percentile === 4) return { text: 'Top 25%', color: 'text-blue-500' };
+  if (percentile === 5) return { text: 'Top 50%', color: 'text-green-500' };
+  return { text: 'Active', color: 'text-muted-foreground' };
+};
+
+export function WalletIdentityCard({ 
+  data, 
+  loading, 
+  walletAge, 
+  transactionCount,
+  portfolioValue = 0,
+  tokenCount = 0
+}: WalletIdentityCardProps) {
   if (loading) {
     return (
       <Card className="backdrop-blur-xl bg-card/50 border-border/50">
@@ -89,6 +116,28 @@ export function WalletIdentityCard({ data, loading, walletAge, transactionCount 
 
   const gasSpent = parseFloat(data.totalGasSpent || '0');
   const displayWalletAge = getWalletAge(walletAge);
+
+  // Calculate percentile rankings based on thresholds
+  // Portfolio Value: Top 1% = $100k+, Top 5% = $50k+, Top 10% = $10k+, Top 25% = $1k+, Top 50% = $100+
+  const portfolioPercentile = calculatePercentile(portfolioValue, [100000, 50000, 10000, 1000, 100]);
+  
+  // Transaction Count: Top 1% = 10k+, Top 5% = 5k+, Top 10% = 1k+, Top 25% = 500+, Top 50% = 100+
+  const txPercentile = calculatePercentile(transactionCount, [10000, 5000, 1000, 500, 100]);
+  
+  // Active Days: Top 1% = 365+, Top 5% = 180+, Top 10% = 90+, Top 25% = 30+, Top 50% = 7+
+  const activityPercentile = calculatePercentile(data.activeDays, [365, 180, 90, 30, 7]);
+  
+  // Gas Spent: Top 1% = 100+, Top 5% = 50+, Top 10% = 20+, Top 25% = 10+, Top 50% = 1+
+  const gasPercentile = calculatePercentile(gasSpent, [100, 50, 20, 10, 1]);
+  
+  // Token Diversity: Top 1% = 50+, Top 5% = 25+, Top 10% = 15+, Top 25% = 10+, Top 50% = 5+
+  const diversityPercentile = calculatePercentile(tokenCount, [50, 25, 15, 10, 5]);
+
+  const portfolioLabel = getPercentileLabel(portfolioPercentile);
+  const txLabel = getPercentileLabel(txPercentile);
+  const activityLabel = getPercentileLabel(activityPercentile);
+  const gasLabel = getPercentileLabel(gasPercentile);
+  const diversityLabel = getPercentileLabel(diversityPercentile);
 
   return (
     <Card className="backdrop-blur-xl bg-card/50 border-border/50 shadow-xl overflow-hidden">
@@ -140,6 +189,70 @@ export function WalletIdentityCard({ data, loading, walletAge, transactionCount 
             <div className="text-2xl font-bold text-foreground">
               {gasSpent.toFixed(2)} APT
             </div>
+          </div>
+        </div>
+
+        {/* Comparative Rankings */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-primary" />
+            Comparative Rankings
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {portfolioValue > 0 && (
+              <div className="bg-background/50 rounded-lg p-3 border border-border/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Portfolio Value</span>
+                  <span className={`text-sm font-bold ${portfolioLabel.color}`}>
+                    {portfolioLabel.text}
+                  </span>
+                </div>
+              </div>
+            )}
+            
+            {transactionCount > 0 && (
+              <div className="bg-background/50 rounded-lg p-3 border border-border/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Transaction Volume</span>
+                  <span className={`text-sm font-bold ${txLabel.color}`}>
+                    {txLabel.text}
+                  </span>
+                </div>
+              </div>
+            )}
+            
+            {data.activeDays > 0 && (
+              <div className="bg-background/50 rounded-lg p-3 border border-border/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Activity Level</span>
+                  <span className={`text-sm font-bold ${activityLabel.color}`}>
+                    {activityLabel.text}
+                  </span>
+                </div>
+              </div>
+            )}
+            
+            {gasSpent > 0 && (
+              <div className="bg-background/50 rounded-lg p-3 border border-border/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Gas Contribution</span>
+                  <span className={`text-sm font-bold ${gasLabel.color}`}>
+                    {gasLabel.text}
+                  </span>
+                </div>
+              </div>
+            )}
+            
+            {tokenCount > 0 && (
+              <div className="bg-background/50 rounded-lg p-3 border border-border/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Token Diversity</span>
+                  <span className={`text-sm font-bold ${diversityLabel.color}`}>
+                    {diversityLabel.text}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
