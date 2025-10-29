@@ -1601,6 +1601,7 @@ serve(async (req) => {
     console.log(`✓ DeFi Activity: ${swapHistory.length} swaps, ${protocolVolumesArray.length} protocols, $${totalDefiVolumeUsd.toFixed(2)} total volume`);
     
     // Fetch sample transactions for detailed analysis (NFT purchases, activity parsing)
+    // Start from the END to get most recent transactions first
     let transactions: any[] = [];
     const analysisBatchSize = 500;
     const maxAnalysisTransactions = Math.min(totalTransactionCount, 2000);
@@ -1610,8 +1611,9 @@ serve(async (req) => {
     const analysisNumBatches = Math.ceil(maxAnalysisTransactions / analysisBatchSize);
     const analysisFetchPromises = [];
     
+    // Fetch from the end (most recent) backwards
     for (let i = 0; i < analysisNumBatches; i++) {
-      const offset = i * analysisBatchSize;
+      const offset = Math.max(0, totalTransactionCount - (i + 1) * analysisBatchSize);
       const txUrl = `${fullnodeBase}/accounts/${address}/transactions?start=${offset}&limit=${analysisBatchSize}`;
       analysisFetchPromises.push(
         fetch(txUrl, { headers: { 'Accept': 'application/json' } })
@@ -1621,7 +1623,8 @@ serve(async (req) => {
     }
     
     const analysisResults = await Promise.all(analysisFetchPromises);
-    transactions = analysisResults.flat().filter(tx => tx && typeof tx === 'object');
+    // Reverse to get newest first, then flatten
+    transactions = analysisResults.reverse().flat().filter(tx => tx && typeof tx === 'object');
     
     console.log(`✓ Fetched ${transactions.length} transactions for detailed analysis`);
     

@@ -520,16 +520,7 @@ export default function IndexPage() {
               {data?.transactionAnalytics && (
                 <TransactionAnalyticsCard analytics={data.transactionAnalytics} />
               )}
-              <ActivityCard 
-                activity={
-                  data?.activity 
-                    ? [...data.activity].sort((a, b) => 
-                        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-                      ) 
-                    : null
-                } 
-                loading={loading} 
-              />
+              <ActivityCard activity={data?.activity || null} loading={loading} />
             </TabsContent>
 
             <TabsContent value="defi" className="space-y-6">
