@@ -26,7 +26,7 @@ export function ThemeProvider({
   storageKey = "tracktos-theme",
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(() => {
+  const [theme, setThemeState] = useState<Theme>(() => {
     try {
       const stored = localStorage.getItem(storageKey) as Theme | null;
       return stored === "light" || stored === "dark" || stored === "system"
@@ -85,7 +85,7 @@ export function ThemeProvider({
     theme,
     setTheme: (theme: Theme) => {
       localStorage.setItem(storageKey, theme);
-      setTheme(theme);
+      setThemeState(theme);
     },
   };
 
