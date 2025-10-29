@@ -227,7 +227,8 @@ export function ShareExportCard({
           </div>
 
           <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
-            <p style="font-size: 9px; color: #e5e7eb; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">Generated with Tracktos • Aptos Wallet Analytics</p>
+            <p style="font-size: 9px; color: #9ca3af; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); margin-bottom: 4px;">Generated with Tracktos • Aptos Wallet Analytics</p>
+            <p style="font-size: 13px; font-weight: 600; color: #22c55e; text-shadow: 1px 1px 3px rgba(0,0,0,0.6); letter-spacing: 0.5px;">tracktos.com</p>
           </div>
         </div>
       `;
