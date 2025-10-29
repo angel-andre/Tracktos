@@ -1734,13 +1734,44 @@ serve(async (req) => {
         }
       }
       
-      // Get recent transactions for activity display (only last 5)
-      activity = transactions.slice(0, 5).map((tx: any) => ({
-        hash: tx.hash || 'unknown',
-        type: tx.type || 'unknown',
-        success: tx.success !== false,
-        timestamp: toISOFromTx(tx)
-      }));
+      // Get recent transactions for activity display (5 most recent by timestamp)
+      const sortedByTime = [...transactions].sort((a: any, b: any) =>
+        Date.parse(toISOFromTx(b)) - Date.parse(toISOFromTx(a))
+      );
+
+      // Prefer fetching the exact latest 5 directly for accuracy
+      try {
+        const recentStart = Math.max(0, totalTransactionCount - 5);
+        const recentResp = await fetch(`${fullnodeBase}/accounts/${address}/transactions?start=${recentStart}&limit=5`, {
+          headers: { 'Accept': 'application/json' }
+        });
+        if (recentResp.ok) {
+          const arr = await recentResp.json();
+          const latest = (Array.isArray(arr) ? arr : []).slice().sort((a: any, b: any) =>
+            Date.parse(toISOFromTx(b)) - Date.parse(toISOFromTx(a))
+          );
+          activity = latest.map((tx: any) => ({
+            hash: tx.hash || 'unknown',
+            type: tx.type || 'unknown',
+            success: tx.success !== false,
+            timestamp: toISOFromTx(tx)
+          }));
+        } else {
+          activity = sortedByTime.slice(0, 5).map((tx: any) => ({
+            hash: tx.hash || 'unknown',
+            type: tx.type || 'unknown',
+            success: tx.success !== false,
+            timestamp: toISOFromTx(tx)
+          }));
+        }
+      } catch {
+        activity = sortedByTime.slice(0, 5).map((tx: any) => ({
+          hash: tx.hash || 'unknown',
+          type: tx.type || 'unknown',
+          success: tx.success !== false,
+          timestamp: toISOFromTx(tx)
+        }));
+      }
 
       // Compute accurate first/last transaction timestamps via dedicated queries
       try {
