@@ -29,7 +29,23 @@
   <meta name="twitter:title" content="Tracktos">
   <meta property="og:description" content="Explore your Aptos adventure through wallet analytics and insights">
   <meta name="twitter:description" content="Explore your Aptos adventure through wallet analytics and insights">
-</head>
+    <script>
+      (function() {
+        try {
+          var storageKey = 'tracktos-theme';
+          var stored = localStorage.getItem(storageKey);
+          var mql = window.matchMedia('(prefers-color-scheme: dark)');
+          var systemDark = mql.matches;
+          var theme = (stored === 'dark' || stored === 'light' || stored === 'system') ? stored : 'system';
+          var useDark = theme === 'dark' || (theme === 'system' && systemDark);
+          if (useDark) document.documentElement.classList.add('dark');
+          else document.documentElement.classList.remove('dark');
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', useDark ? '#0B0B0F' : '#ffffff');
+        } catch (e) { /* no-op */ }
+      })();
+    </script>
+  </head>
 
   <body>
     <div id="root"></div>
