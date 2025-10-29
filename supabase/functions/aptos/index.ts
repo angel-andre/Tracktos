@@ -1201,17 +1201,6 @@ serve(async (req) => {
     
     console.log(`✓ Fetched ${allTransactions.length} total transactions (${totalTransactionCount} in account)`);
     
-    // Debug: Check transaction date range
-    if (allTransactions.length > 0) {
-      const txDates = allTransactions
-        .filter(tx => tx.timestamp)
-        .map(tx => toISOFromTx(tx))
-        .sort();
-      if (txDates.length > 0) {
-        console.log(`✓ Transaction date range: ${txDates[0]} to ${txDates[txDates.length - 1]}`);
-      }
-    }
-    
     // Calculate total gas spent from ALL transactions (dedup + user txs only)
     const parseBig = (v: any): bigint => {
       try { return BigInt(typeof v === 'string' ? v : String(v)); } catch { return 0n; }
@@ -1668,11 +1657,6 @@ serve(async (req) => {
     const gasOverTime = Array.from(dailyGas.entries())
       .map(([date, gas]) => ({ date, gas: formatUnits(String(gas), 8) }))
       .sort((a, b) => a.date.localeCompare(b.date));
-    
-    // Debug: Log gas data date range
-    if (gasOverTime.length > 0) {
-      console.log(`✓ Gas data spans from ${gasOverTime[0].date} to ${gasOverTime[gasOverTime.length - 1].date} (${gasOverTime.length} days with activity)`);
-    }
     
     // Format top contracts
     const topContracts = Array.from(contractCounts.entries())

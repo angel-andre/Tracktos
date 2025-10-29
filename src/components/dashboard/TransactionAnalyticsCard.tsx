@@ -28,39 +28,11 @@ export const TransactionAnalyticsCard = ({ analytics }: TransactionAnalyticsCard
   // Get last 90 days for heatmap
   const recentHeatmap = analytics.activityHeatmap.slice(-90);
   
-  // Show gas data from wallet creation to today (fill missing days with 0)
-  const recentGas = (() => {
-    if (!analytics.gasOverTime || analytics.gasOverTime.length === 0) return [] as { date: string; gas: number }[];
-
-    // Build a map of YYYY-MM-DD -> gas number
-    const byDate = new Map<string, number>();
-    analytics.gasOverTime.forEach((item) => {
-      const key = item.date.split('T')[0];
-      const val = parseFloat(item.gas);
-      if (!isNaN(val)) byDate.set(key, val);
-    });
-
-    // Determine full range (first entry date to today)
-    const start = new Date(analytics.gasOverTime[0].date);
-    const today = new Date();
-    start.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-
-    // Generate continuous series
-    const series: { date: string; gas: number }[] = [];
-    for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      const iso = `${y}-${m}-${day}`;
-      series.push({
-        date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        gas: byDate.get(iso) ?? 0,
-      });
-    }
-
-    return series;
-  })();
+  // Get last 30 days for gas chart
+  const recentGas = analytics.gasOverTime.slice(-30).map(item => ({
+    date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    gas: parseFloat(item.gas)
+  }));
 
   return (
     <Card className="col-span-full">
@@ -140,7 +112,7 @@ export const TransactionAnalyticsCard = ({ analytics }: TransactionAnalyticsCard
           <div>
             <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
               <Zap className="h-4 w-4" />
-              Gas Spending (Since Creation)
+              Gas Spending (Last 30 Days)
             </h3>
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={recentGas}>
