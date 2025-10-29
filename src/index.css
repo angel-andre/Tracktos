@@ -102,13 +102,12 @@ All colors MUST be HSL.
   }
 
   html {
-    background: var(--gradient-bg);
-    background-attachment: fixed;
+    @apply bg-background;
   }
 
   body {
     @apply bg-background text-foreground;
-    background: var(--gradient-bg);
-    background-attachment: fixed;
+    min-height: 100vh;
+    min-height: 100dvh;
   }
 }
