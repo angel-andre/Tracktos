@@ -25,8 +25,30 @@ const COLORS = [
 ];
 
 export const TransactionAnalyticsCard = ({ analytics }: TransactionAnalyticsCardProps) => {
-  // Get last 90 days for heatmap
-  const recentHeatmap = analytics.activityHeatmap.slice(-90);
+  // Build continuous last 90 days ending today for heatmap
+  const recentHeatmap = (() => {
+    const byDate = new Map<string, number>();
+    analytics.activityHeatmap.forEach((item) => {
+      const key = item.date.split('T')[0];
+      byDate.set(key, item.count);
+    });
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const days: { date: string; count: number }[] = [];
+    for (let i = 89; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const iso = `${y}-${m}-${day}`;
+      days.push({ date: iso, count: byDate.get(iso) ?? 0 });
+    }
+
+    return days;
+  })();
   
   // Get last 30 days for gas chart
   const recentGas = analytics.gasOverTime.slice(-30).map(item => ({
@@ -49,7 +71,7 @@ export const TransactionAnalyticsCard = ({ analytics }: TransactionAnalyticsCard
         <div>
           <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
             <Activity className="h-4 w-4" />
-            Activity Heatmap (Last 90 Days)
+            Activity Heatmap (Past 90 Days to Today)
           </h3>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={recentHeatmap}>
