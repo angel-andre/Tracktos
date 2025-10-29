@@ -71,6 +71,28 @@ export function ThemeProvider({
     setTheme: (newTheme: Theme) => {
       localStorage.setItem(storageKey, newTheme);
       setThemeState(newTheme);
+
+      // Apply immediately so UI updates without waiting for effect
+      try {
+        const root = document.documentElement;
+        const setMeta = (t: "light" | "dark") => {
+          root.style.colorScheme = t;
+          const metaTheme = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+          if (metaTheme) metaTheme.content = t === "dark" ? "#0B0B0F" : "#ffffff";
+        };
+
+        if (newTheme === "system") {
+          const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          const t = systemDark ? "dark" : "light";
+          if (t === "dark") root.classList.add("dark");
+          else root.classList.remove("dark");
+          setMeta(t);
+        } else {
+          if (newTheme === "dark") root.classList.add("dark");
+          else root.classList.remove("dark");
+          setMeta(newTheme);
+        }
+      } catch {}
     },
   };
 
