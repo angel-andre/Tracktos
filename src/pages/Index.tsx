@@ -22,7 +22,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info } from "lucide-react";
 import aptosLogo from "@/assets/aptos-logo.png";
 import { useToast } from "@/hooks/use-toast";
-import { ThemeToggle } from "@/components/theme-toggle";
+
 
 const DEMO_WALLET = "0x632dad777e05538c1ce47fad67ad801d242b481e45adfbc058a45e59851c3907";
 
@@ -343,10 +343,7 @@ export default function IndexPage() {
 
         {/* Header */}
         <div className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-3 mb-2 relative">
-            <div className="absolute right-0 top-0">
-              <ThemeToggle />
-            </div>
+          <div className="flex items-center justify-center gap-3 mb-2">
             <img src={aptosLogo} alt="Aptos Logo" className="w-10 h-10" />
             <h1 className="text-4xl font-bold text-foreground">
               Tracktos
