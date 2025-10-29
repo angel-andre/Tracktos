@@ -145,7 +145,14 @@ export function ShareExportCard({
       logoDiv.style.top = "20px";
       logoDiv.style.right = "20px";
       logoDiv.style.zIndex = "2";
-      logoDiv.innerHTML = `<img src="${aptosLogoWhite}" style="width: 60px; height: 60px; opacity: 0.9;" alt="Aptos" />`;
+      
+      const logoImg = document.createElement("img");
+      logoImg.src = aptosLogoWhite;
+      logoImg.style.width = "60px";
+      logoImg.style.height = "60px";
+      logoImg.style.opacity = "0.9";
+      logoImg.alt = "Aptos";
+      logoDiv.appendChild(logoImg);
       snapshotDiv.appendChild(logoDiv);
       
       const contentDiv = document.createElement("div");
@@ -155,83 +162,155 @@ export function ShareExportCard({
       contentDiv.style.display = "flex";
       contentDiv.style.flexDirection = "column";
       
-      contentDiv.innerHTML = `
-        <div style="color: white; max-width: 60%; padding-right: 40px; height: 100%; display: flex; flex-direction: column;">
-          <div style="text-align: left; margin-bottom: 14px;">
-            <h1 style="font-size: 40px; font-weight: bold; margin-bottom: 6px; color: #22c55e; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">Tracktos</h1>
-            <p style="font-size: 14px; color: #e5e7eb; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">Wallet Milestones & Analytics</p>
-          </div>
-          
-          <div style="background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 10px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.1);">
-            <p style="font-size: 10px; color: #9ca3af; margin-bottom: 3px;">Wallet Address</p>
-            <p style="font-size: 12px; font-weight: 500; word-break: break-all;">${address}</p>
-          </div>
-
-          <div style="margin-bottom: 12px;">
-            <h2 style="font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #22c55e;">📊 Key Metrics</h2>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-              <div style="background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                <p style="font-size: 9px; color: #9ca3af; margin-bottom: 3px;">Wallet Age</p>
-                <p style="font-size: 14px; font-weight: bold;">${formattedWalletAge}</p>
-              </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                <p style="font-size: 9px; color: #9ca3af; margin-bottom: 3px;">Active Days</p>
-                <p style="font-size: 14px; font-weight: bold;">${walletIdentity?.activeDays || 0}</p>
-              </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                <p style="font-size: 9px; color: #9ca3af; margin-bottom: 3px;">Transactions</p>
-                <p style="font-size: 14px; font-weight: bold;">${transactionCount.toLocaleString()}</p>
-              </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);">
-                <p style="font-size: 9px; color: #9ca3af; margin-bottom: 3px;">Gas Spent</p>
-                <p style="font-size: 14px; font-weight: bold;">${gasSpent.toFixed(2)} APT</p>
-              </div>
-            </div>
-          </div>
-
-          <div style="margin-bottom: 12px;">
-            <h2 style="font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #22c55e;">🏅 Comparative Rankings</h2>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-              <div style="background: rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 10px; color: #e5e7eb;">Portfolio Value</span>
-                <span style="font-size: 10px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(portfolioPercentile)}</span>
-              </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 10px; color: #e5e7eb;">Transaction Volume</span>
-                <span style="font-size: 10px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(txPercentile)}</span>
-              </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 10px; color: #e5e7eb;">Activity Level</span>
-                <span style="font-size: 10px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(activityPercentile)}</span>
-              </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 10px; color: #e5e7eb;">Gas Contribution</span>
-                <span style="font-size: 10px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(gasPercentile)}</span>
-              </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 10px; color: #e5e7eb;">Token Diversity</span>
-                <span style="font-size: 10px; font-weight: bold; color: #fbbf24;">${getPercentileLabel(diversityPercentile)}</span>
-              </div>
-              <div style="background: rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 10px; color: #e5e7eb;">NFT Holdings</span>
-                <span style="font-size: 10px; font-weight: bold; color: #fbbf24;">${nftCount} NFTs</span>
-              </div>
-            </div>
-          </div>
-
-          <div style="margin-bottom: 12px; flex-shrink: 0;">
-            <h2 style="font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #22c55e;">🎖️ Achievement Badges</h2>
-            <div style="display: flex; flex-wrap: wrap; gap: 5px;">
-              ${badgesHtml}
-            </div>
-          </div>
-
-          <div style="margin-top: auto; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
-            <p style="font-size: 9px; color: #9ca3af; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); margin-bottom: 4px;">Generated with Tracktos • Aptos Wallet Analytics</p>
-            <p style="font-size: 13px; font-weight: 600; color: #22c55e; text-shadow: 1px 1px 3px rgba(0,0,0,0.6); letter-spacing: 0.5px;">tracktos.com</p>
-          </div>
-        </div>
-      `;
+      // ==================== Security: Safe DOM Construction ====================
+      // Create content structure using DOM methods instead of innerHTML
+      const mainContainer = document.createElement("div");
+      mainContainer.style.cssText = "color: white; max-width: 60%; padding-right: 40px; height: 100%; display: flex; flex-direction: column;";
+      
+      // Header section
+      const headerSection = document.createElement("div");
+      headerSection.style.cssText = "text-align: left; margin-bottom: 14px;";
+      const title = document.createElement("h1");
+      title.style.cssText = "font-size: 40px; font-weight: bold; margin-bottom: 6px; color: #22c55e; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);";
+      title.textContent = "Tracktos";
+      const subtitle = document.createElement("p");
+      subtitle.style.cssText = "font-size: 14px; color: #e5e7eb; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);";
+      subtitle.textContent = "Wallet Milestones & Analytics";
+      headerSection.appendChild(title);
+      headerSection.appendChild(subtitle);
+      
+      // Address section
+      const addressBox = document.createElement("div");
+      addressBox.style.cssText = "background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 10px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.1);";
+      const addressLabel = document.createElement("p");
+      addressLabel.style.cssText = "font-size: 10px; color: #9ca3af; margin-bottom: 3px;";
+      addressLabel.textContent = "Wallet Address";
+      const addressValue = document.createElement("p");
+      addressValue.style.cssText = "font-size: 12px; font-weight: 500; word-break: break-all;";
+      addressValue.textContent = address;
+      addressBox.appendChild(addressLabel);
+      addressBox.appendChild(addressValue);
+      
+      mainContainer.appendChild(headerSection);
+      mainContainer.appendChild(addressBox);
+      
+      // Key Metrics section
+      const metricsSection = document.createElement("div");
+      metricsSection.style.cssText = "margin-bottom: 12px;";
+      const metricsTitle = document.createElement("h2");
+      metricsTitle.style.cssText = "font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #22c55e;";
+      metricsTitle.textContent = "📊 Key Metrics";
+      metricsSection.appendChild(metricsTitle);
+      
+      const metricsGrid = document.createElement("div");
+      metricsGrid.style.cssText = "display: grid; grid-template-columns: 1fr 1fr; gap: 8px;";
+      
+      const metrics = [
+        { label: "Wallet Age", value: formattedWalletAge },
+        { label: "Active Days", value: String(walletIdentity?.activeDays || 0) },
+        { label: "Transactions", value: transactionCount.toLocaleString() },
+        { label: "Gas Spent", value: `${gasSpent.toFixed(2)} APT` }
+      ];
+      
+      metrics.forEach(metric => {
+        const box = document.createElement("div");
+        box.style.cssText = "background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);";
+        const label = document.createElement("p");
+        label.style.cssText = "font-size: 9px; color: #9ca3af; margin-bottom: 3px;";
+        label.textContent = metric.label;
+        const value = document.createElement("p");
+        value.style.cssText = "font-size: 14px; font-weight: bold;";
+        value.textContent = metric.value;
+        box.appendChild(label);
+        box.appendChild(value);
+        metricsGrid.appendChild(box);
+      });
+      
+      metricsSection.appendChild(metricsGrid);
+      mainContainer.appendChild(metricsSection);
+      
+      // Comparative Rankings section
+      const rankingsSection = document.createElement("div");
+      rankingsSection.style.cssText = "margin-bottom: 12px;";
+      const rankingsTitle = document.createElement("h2");
+      rankingsTitle.style.cssText = "font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #22c55e;";
+      rankingsTitle.textContent = "🏅 Comparative Rankings";
+      rankingsSection.appendChild(rankingsTitle);
+      
+      const rankingsGrid = document.createElement("div");
+      rankingsGrid.style.cssText = "display: grid; grid-template-columns: 1fr 1fr; gap: 6px;";
+      
+      const rankings = [
+        { label: "Portfolio Value", value: getPercentileLabel(portfolioPercentile) },
+        { label: "Transaction Volume", value: getPercentileLabel(txPercentile) },
+        { label: "Activity Level", value: getPercentileLabel(activityPercentile) },
+        { label: "Gas Contribution", value: getPercentileLabel(gasPercentile) },
+        { label: "Token Diversity", value: getPercentileLabel(diversityPercentile) },
+        { label: "NFT Holdings", value: `${nftCount} NFTs` }
+      ];
+      
+      rankings.forEach(ranking => {
+        const box = document.createElement("div");
+        box.style.cssText = "background: rgba(255,255,255,0.05); padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;";
+        const label = document.createElement("span");
+        label.style.cssText = "font-size: 10px; color: #e5e7eb;";
+        label.textContent = ranking.label;
+        const value = document.createElement("span");
+        value.style.cssText = "font-size: 10px; font-weight: bold; color: #fbbf24;";
+        value.textContent = ranking.value;
+        box.appendChild(label);
+        box.appendChild(value);
+        rankingsGrid.appendChild(box);
+      });
+      
+      rankingsSection.appendChild(rankingsGrid);
+      mainContainer.appendChild(rankingsSection);
+      
+      // Achievement Badges section
+      const badgesSection = document.createElement("div");
+      badgesSection.style.cssText = "margin-bottom: 12px; flex-shrink: 0;";
+      const badgesTitle = document.createElement("h2");
+      badgesTitle.style.cssText = "font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #22c55e;";
+      badgesTitle.textContent = "🎖️ Achievement Badges";
+      badgesSection.appendChild(badgesTitle);
+      
+      const badgesContainer = document.createElement("div");
+      badgesContainer.style.cssText = "display: flex; flex-wrap: wrap; gap: 5px;";
+      
+      if (walletIdentity?.badges?.length) {
+        walletIdentity.badges.forEach(badge => {
+          const badgeBox = document.createElement("div");
+          badgeBox.style.cssText = "background: rgba(96,165,250,0.15); padding: 10px 16px; border-radius: 8px; border: 1px solid rgba(96,165,250,0.3); display: inline-block; margin: 6px;";
+          const badgeText = document.createElement("span");
+          badgeText.style.cssText = "font-size: 13px; font-weight: 600; color: #60a5fa;";
+          badgeText.textContent = `🏆 ${badge.name}`;
+          badgeBox.appendChild(badgeText);
+          badgesContainer.appendChild(badgeBox);
+        });
+      } else {
+        const noBadges = document.createElement("p");
+        noBadges.style.cssText = "font-size: 13px; color: #9ca3af; text-align: center;";
+        noBadges.textContent = "No badges earned yet";
+        badgesContainer.appendChild(noBadges);
+      }
+      
+      badgesSection.appendChild(badgesContainer);
+      mainContainer.appendChild(badgesSection);
+      
+      // Footer
+      const footer = document.createElement("div");
+      footer.style.cssText = "margin-top: auto; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);";
+      const footerText = document.createElement("p");
+      footerText.style.cssText = "font-size: 9px; color: #9ca3af; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); margin-bottom: 4px;";
+      footerText.textContent = "Generated with Tracktos • Aptos Wallet Analytics";
+      const websiteText = document.createElement("p");
+      websiteText.style.cssText = "font-size: 13px; font-weight: 600; color: #22c55e; text-shadow: 1px 1px 3px rgba(0,0,0,0.6); letter-spacing: 0.5px;";
+      websiteText.textContent = "tracktos.com";
+      footer.appendChild(footerText);
+      footer.appendChild(websiteText);
+      mainContainer.appendChild(footer);
+      
+      contentDiv.appendChild(mainContainer);
       
       snapshotDiv.appendChild(contentDiv);
       document.body.appendChild(snapshotDiv);

@@ -1,5 +1,47 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+// ==================== Security: Input Validation ====================
+function validateAptosAddress(address: string): boolean {
+  if (!address || typeof address !== 'string') return false;
+  const aptosAddressRegex = /^0x[a-fA-F0-9]{1,64}$/;
+  return aptosAddressRegex.test(address) && address.length <= 66;
+}
+
+function validateTimeframe(timeframe: string): boolean {
+  return ['7D', '30D', '90D', '180D', '365D'].includes(timeframe);
+}
+
+// ==================== Security: Rate Limiting ====================
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 15; // 15 requests per minute per address
+
+function checkRateLimit(address: string): boolean {
+  const now = Date.now();
+  const limit = rateLimitMap.get(address);
+  
+  if (!limit || now > limit.resetTime) {
+    rateLimitMap.set(address, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  
+  if (limit.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return false;
+  }
+  
+  limit.count++;
+  return true;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of rateLimitMap.entries()) {
+    if (now > value.resetTime) {
+      rateLimitMap.delete(key);
+    }
+  }
+}, RATE_LIMIT_WINDOW);
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -29,10 +71,33 @@ serve(async (req) => {
   try {
     const { address, timeframe } = await req.json() as PortfolioHistoryRequest;
 
+    // ==================== Security: Input Validation ====================
     if (!address || !timeframe) {
       return new Response(
-        JSON.stringify({ error: 'Missing address or timeframe' }),
+        JSON.stringify({ error: 'Address and timeframe are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!validateAptosAddress(address)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid address format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!validateTimeframe(timeframe)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid timeframe' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ==================== Security: Rate Limiting ====================
+    if (!checkRateLimit(address)) {
+      return new Response(
+        JSON.stringify({ error: 'Too many requests. Please try again later.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -727,9 +792,9 @@ console.log(`Selected ${uniqueTokenBalances.length} tokens:`, uniqueTokenBalance
 
   } catch (error) {
     console.error('Error in portfolio-history function:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    // ==================== Security: Generic Error Message ====================
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: 'Service temporarily unavailable' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

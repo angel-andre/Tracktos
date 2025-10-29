@@ -1,5 +1,49 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+// ==================== Security: Input Validation ====================
+function validateAptosAddress(address: string): boolean {
+  if (!address || typeof address !== 'string') return false;
+  // Aptos addresses should be 0x followed by up to 64 hex characters
+  const aptosAddressRegex = /^0x[a-fA-F0-9]{1,64}$/;
+  return aptosAddressRegex.test(address) && address.length <= 66;
+}
+
+function validateNetwork(network: string): boolean {
+  return network === 'mainnet' || network === 'testnet';
+}
+
+// ==================== Security: Rate Limiting ====================
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10; // 10 requests per minute per address
+
+function checkRateLimit(address: string): boolean {
+  const now = Date.now();
+  const limit = rateLimitMap.get(address);
+  
+  if (!limit || now > limit.resetTime) {
+    rateLimitMap.set(address, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  
+  if (limit.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return false;
+  }
+  
+  limit.count++;
+  return true;
+}
+
+// Clean up old entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of rateLimitMap.entries()) {
+    if (now > value.resetTime) {
+      rateLimitMap.delete(key);
+    }
+  }
+}, RATE_LIMIT_WINDOW);
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -80,10 +124,33 @@ serve(async (req) => {
   try {
     const { address, network = 'mainnet' } = await req.json();
 
+    // ==================== Security: Input Validation ====================
     if (!address) {
       return new Response(
-        JSON.stringify({ error: 'Missing address' }),
+        JSON.stringify({ error: 'Address is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!validateAptosAddress(address)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid address format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!validateNetwork(network)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid network' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ==================== Security: Rate Limiting ====================
+    if (!checkRateLimit(address)) {
+      return new Response(
+        JSON.stringify({ error: 'Too many requests. Please try again later.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -2403,8 +2470,9 @@ serve(async (req) => {
 
   } catch (error: any) {
     console.error('Error:', error.message);
+    // ==================== Security: Generic Error Message ====================
     return new Response(
-      JSON.stringify({ error: 'Failed to fetch account data', details: error.message }),
+      JSON.stringify({ error: 'Service temporarily unavailable' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

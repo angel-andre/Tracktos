@@ -1,4 +1,41 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+// ==================== Security: Input Validation ====================
+function validateNumber(value: number, min: number, max: number): boolean {
+  return typeof value === 'number' && !isNaN(value) && value >= min && value <= max;
+}
+
+// ==================== Security: Rate Limiting ====================
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 5; // 5 requests per minute (image generation is expensive)
+
+function checkRateLimit(key: string): boolean {
+  const now = Date.now();
+  const limit = rateLimitMap.get(key);
+  
+  if (!limit || now > limit.resetTime) {
+    rateLimitMap.set(key, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  
+  if (limit.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return false;
+  }
+  
+  limit.count++;
+  return true;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of rateLimitMap.entries()) {
+    if (now > value.resetTime) {
+      rateLimitMap.delete(key);
+    }
+  }
+}, RATE_LIMIT_WINDOW);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,9 +58,52 @@ serve(async (req) => {
       badges 
     } = await req.json();
 
+    // ==================== Security: Input Validation ====================
+    if (portfolioValue !== undefined && !validateNumber(portfolioValue, 0, 100000000)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid portfolio value' }), 
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (transactionCount !== undefined && !validateNumber(transactionCount, 0, 10000000)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid transaction count' }), 
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (activeDays !== undefined && !validateNumber(activeDays, 0, 10000)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid active days' }), 
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (gasSpent !== undefined && !validateNumber(gasSpent, 0, 1000000)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid gas spent' }), 
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ==================== Security: Rate Limiting ====================
+    const rateLimitKey = `img-${transactionCount}-${activeDays}`;
+    if (!checkRateLimit(rateLimitKey)) {
+      return new Response(
+        JSON.stringify({ error: 'Too many requests. Please try again later.' }), 
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+      console.error("LOVABLE_API_KEY is not configured");
+      // ==================== Security: Generic Error Message ====================
+      return new Response(
+        JSON.stringify({ error: 'Service configuration error' }), 
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Create a descriptive prompt based on wallet characteristics
@@ -117,8 +197,9 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("Error in generate-wallet-background:", error);
+    // ==================== Security: Generic Error Message ====================
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), 
+      JSON.stringify({ error: 'Service temporarily unavailable' }), 
       { 
         status: 500, 
         headers: { ...corsHeaders, "Content-Type": "application/json" } 
