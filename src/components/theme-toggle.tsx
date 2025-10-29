@@ -6,13 +6,26 @@ export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
 
   const toggleTheme = () => {
-    // Cycle through light -> dark -> system -> light
-    const next = theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
+    // Cycle with visible change from system based on effective theme
+    const prefersDark = typeof window !== "undefined" &&
+      "matchMedia" in window &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const effectiveDark = theme === "dark" || (theme === "system" && prefersDark);
+
+    const next: "light" | "dark" | "system" =
+      theme === "light" ? "dark" :
+      theme === "dark" ? "system" :
+      effectiveDark ? "light" : "dark";
+
     setTheme(next);
   };
 
-  const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-
+  const isDark = (() => {
+    const prefersDark = typeof window !== "undefined" &&
+      "matchMedia" in window &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return theme === "dark" || (theme === "system" && prefersDark);
+  })();
   return (
     <Button
       variant="outline"
