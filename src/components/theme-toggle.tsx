@@ -6,9 +6,9 @@ export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
 
   const toggleTheme = () => {
-    const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const effectiveDark = theme === "dark" || (theme === "system" && systemPrefersDark);
-    setTheme(effectiveDark ? "light" : "dark");
+    // Cycle through light -> dark -> system -> light
+    const next = theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
+    setTheme(next);
   };
 
   const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
