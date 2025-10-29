@@ -26,25 +26,59 @@ export function ThemeProvider({
   storageKey = "tracktos-theme",
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
-  );
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      const stored = localStorage.getItem(storageKey) as Theme | null;
+      return stored === "light" || stored === "dark" || stored === "system"
+        ? stored
+        : defaultTheme;
+    } catch {
+      return defaultTheme;
+    }
+  });
 
   useEffect(() => {
     const root = window.document.documentElement;
 
-    root.classList.remove("light", "dark");
+    const applyTheme = (t: "light" | "dark") => {
+      root.classList.remove("light", "dark");
+      root.classList.add(t);
+      // Improve native form control theming and status bars
+      (root.style as any).colorScheme = t;
+      const metaTheme = document.querySelector(
+        'meta[name="theme-color"]'
+      ) as HTMLMetaElement | null;
+      if (metaTheme) metaTheme.content = t === "dark" ? "#0B0B0F" : "#ffffff";
+    };
 
     if (theme === "system") {
       const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
         ? "dark"
         : "light";
-
-      root.classList.add(systemTheme);
+      applyTheme(systemTheme);
       return;
     }
 
-    root.classList.add(theme);
+    applyTheme(theme);
+  }, [theme]);
+
+  // React to OS theme changes when using "system"
+  useEffect(() => {
+    if (theme !== "system") return;
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = () => {
+      const t = mql.matches ? "dark" : "light";
+      const root = window.document.documentElement;
+      root.classList.remove("light", "dark");
+      root.classList.add(t);
+      (root.style as any).colorScheme = t;
+      const metaTheme = document.querySelector(
+        'meta[name="theme-color"]'
+      ) as HTMLMetaElement | null;
+      if (metaTheme) metaTheme.content = t === "dark" ? "#0B0B0F" : "#ffffff";
+    };
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
   }, [theme]);
 
   const value = {
