@@ -422,17 +422,29 @@ export function ShareExportCard({
     }
   };
 
-  const shareOnTwitter = () => {
-    const gasSpent = parseFloat(walletIdentity?.totalGasSpent || '0');
-    const formattedWalletAge = getWalletAge(walletAge);
-    
-    const portfolioPercentile = calculatePercentile(portfolioValue, [100000, 50000, 10000, 1000, 100]);
-    const txPercentile = calculatePercentile(transactionCount, [10000, 5000, 1000, 500, 100]);
-    
-    const text = `Check out my Aptos wallet milestones! 🏆\n\n💰 Portfolio: $${portfolioValue.toLocaleString()}\n📊 Transactions: ${transactionCount.toLocaleString()}\n🖼️ NFTs: ${nftCount}\n⚡ Active Days: ${walletIdentity?.activeDays || 0}\n🔥 Gas Spent: ${gasSpent.toFixed(2)} APT\n🏅 Rankings: ${getPercentileLabel(portfolioPercentile)} Portfolio, ${getPercentileLabel(txPercentile)} Activity\n\nAnalyze your wallet at Tracktos!`;
-    
-    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
-    window.open(twitterUrl, "_blank", "width=550,height=420");
+  const shareOnTwitter = async () => {
+    setGeneratingImage(true);
+    try {
+      // Generate and download the snapshot first
+      await generateSnapshot();
+      
+      // Then open Twitter with text prompting to attach the downloaded image
+      const gasSpent = parseFloat(walletIdentity?.totalGasSpent || '0');
+      const portfolioPercentile = calculatePercentile(portfolioValue, [100000, 50000, 10000, 1000, 100]);
+      const txPercentile = calculatePercentile(transactionCount, [10000, 5000, 1000, 500, 100]);
+      
+      const text = `Check out my Aptos wallet milestones! 🏆\n\n💰 Portfolio: $${portfolioValue.toLocaleString()}\n📊 Transactions: ${transactionCount.toLocaleString()}\n🖼️ NFTs: ${nftCount}\n⚡ Active Days: ${walletIdentity?.activeDays || 0}\n🔥 Gas Spent: ${gasSpent.toFixed(2)} APT\n🏅 Rankings: ${getPercentileLabel(portfolioPercentile)} Portfolio, ${getPercentileLabel(txPercentile)} Activity\n\n📸 [Attach the downloaded snapshot image]\n\nAnalyze your wallet at Tracktos!`;
+      
+      const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+      window.open(twitterUrl, "_blank", "width=550,height=420");
+      
+      toast.success("Snapshot downloaded! Attach it to your tweet.");
+    } catch (error) {
+      console.error("Error sharing on Twitter:", error);
+      toast.error("Failed to prepare Twitter share");
+    } finally {
+      setGeneratingImage(false);
+    }
   };
 
   return (
@@ -486,11 +498,21 @@ export function ShareExportCard({
 
           <Button
             onClick={shareOnTwitter}
+            disabled={generatingImage}
             className="w-full gap-2"
             variant="default"
           >
-            <Share2 className="w-4 h-4" />
-            Share on X
+            {generatingImage ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Preparing...
+              </>
+            ) : (
+              <>
+                <Share2 className="w-4 h-4" />
+                Share on X
+              </>
+            )}
           </Button>
         </div>
 
