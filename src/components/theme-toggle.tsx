@@ -6,17 +6,13 @@ export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
 
   const toggleTheme = () => {
-    // If currently system, check what system prefers and toggle opposite
-    if (theme === "system") {
-      const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      setTheme(systemPrefersDark ? "light" : "dark");
+    if (theme === "light") {
+      setTheme("dark");
     } else {
-      // Toggle between light and dark
-      setTheme(theme === "dark" ? "light" : "dark");
+      setTheme("light");
     }
   };
 
-  // Determine which icon to show
   const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   return (
