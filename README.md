@@ -489,15 +489,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - [Aptos Labs](https://aptoslabs.com/) - For the Aptos blockchain and APIs
 - [Shadcn/ui](https://ui.shadcn.com/) - For the beautiful component library
-- [Lovable](https://lovable.dev/) - For the development platform
 - [Supabase](https://supabase.com/) - For the backend infrastructure
 
 ## 📞 Support
 
 For questions and support, please open an issue in the GitHub repository.
-
----
-
-<div align="center">
-  Made with ❤️ using Lovable
-</div>
