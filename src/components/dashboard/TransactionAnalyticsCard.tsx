@@ -28,8 +28,8 @@ export const TransactionAnalyticsCard = ({ analytics }: TransactionAnalyticsCard
   // Get last 90 days for heatmap
   const recentHeatmap = analytics.activityHeatmap.slice(-90);
   
-  // Get last 30 days for gas chart
-  const recentGas = analytics.gasOverTime.slice(-30).map(item => ({
+  // Get last year for gas chart
+  const recentGas = analytics.gasOverTime.slice(-365).map(item => ({
     date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     gas: parseFloat(item.gas)
   }));
@@ -112,7 +112,7 @@ export const TransactionAnalyticsCard = ({ analytics }: TransactionAnalyticsCard
           <div>
             <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
               <Zap className="h-4 w-4" />
-              Gas Spending (Last 30 Days)
+              Gas Spending (Last Year)
             </h3>
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={recentGas}>
