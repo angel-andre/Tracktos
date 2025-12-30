@@ -1,13 +1,10 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { 
   Globe, 
   Server, 
   Coins, 
   TrendingUp, 
-  Zap, 
-  Clock,
   MapPin,
   Building2
 } from "lucide-react";
@@ -27,7 +24,7 @@ function formatNumber(num: number): string {
 export function NetworkStatsPanel({ stats }: NetworkStatsPanelProps) {
   return (
     <div className="space-y-4 p-4">
-      {/* Main Stats Grid */}
+      {/* Main Stats Grid - Static data from Dec 2024 Aptos Explorer */}
       <div className="grid grid-cols-2 gap-3">
         <Card className="bg-card/50 border-border/50">
           <CardContent className="p-3">
@@ -69,29 +66,11 @@ export function NetworkStatsPanel({ stats }: NetworkStatsPanelProps) {
           </CardContent>
         </Card>
       </div>
-
-      {/* TPS Stats */}
-      <Card className="bg-card/50 border-border/50">
-        <CardContent className="p-3">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-primary" />
-              <span className="text-xs text-muted-foreground">TPS</span>
-            </div>
-            <Badge variant="outline" className="text-xs">Real-time</Badge>
-          </div>
-          <div className="flex items-baseline gap-4">
-            <div>
-              <p className="text-2xl font-bold text-foreground">{Math.round(stats.tps)}</p>
-              <p className="text-xs text-muted-foreground">Current</p>
-            </div>
-            <div className="text-right">
-              <p className="text-lg font-semibold text-muted-foreground">{formatNumber(stats.peakTps)}</p>
-              <p className="text-xs text-muted-foreground">Peak (30d)</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      
+      {/* Static data indicator */}
+      <p className="text-[10px] text-muted-foreground text-center">
+        Validator data from Aptos Explorer • Dec 2024
+      </p>
 
       {/* Staking Stats */}
       <Card className="bg-card/50 border-border/50">
@@ -99,6 +78,7 @@ export function NetworkStatsPanel({ stats }: NetworkStatsPanelProps) {
           <div className="flex items-center gap-2 mb-2">
             <Coins className="w-4 h-4 text-primary" />
             <span className="text-xs text-muted-foreground">Total Staked</span>
+            <Badge variant="outline" className="text-[10px] ml-auto">Static</Badge>
           </div>
           <p className="text-xl font-bold text-foreground mb-1">
             {formatNumber(stats.totalStaked)} <span className="text-sm font-normal text-muted-foreground">APT</span>
@@ -110,26 +90,13 @@ export function NetworkStatsPanel({ stats }: NetworkStatsPanelProps) {
         </CardContent>
       </Card>
 
-      {/* Epoch Progress */}
-      <Card className="bg-card/50 border-border/50">
-        <CardContent className="p-3">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-primary" />
-              <span className="text-xs text-muted-foreground">Epoch {stats.epoch}</span>
-            </div>
-            <span className="text-xs text-muted-foreground">{stats.epochProgress.toFixed(0)}%</span>
-          </div>
-          <Progress value={stats.epochProgress} className="h-2" />
-        </CardContent>
-      </Card>
-
       {/* Total Supply */}
       <Card className="bg-card/50 border-border/50">
         <CardContent className="p-3">
           <div className="flex items-center gap-2 mb-1">
             <Coins className="w-4 h-4 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">Total Supply</span>
+            <Badge variant="outline" className="text-[10px] ml-auto">Static</Badge>
           </div>
           <p className="text-lg font-bold text-foreground">
             {formatNumber(stats.totalSupply)} <span className="text-sm font-normal text-muted-foreground">APT</span>
