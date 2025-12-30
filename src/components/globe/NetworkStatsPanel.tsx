@@ -1,12 +1,8 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { 
-  Globe, 
-  Server, 
   Coins, 
-  TrendingUp, 
-  MapPin,
-  Building2
+  TrendingUp
 } from "lucide-react";
 import type { NetworkStats } from "@/hooks/useValidatorNodes";
 
@@ -23,55 +19,7 @@ function formatNumber(num: number): string {
 
 export function NetworkStatsPanel({ stats }: NetworkStatsPanelProps) {
   return (
-    <div className="space-y-4 p-4">
-      {/* Main Stats Grid - Static data from Dec 2024 Aptos Explorer */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card className="bg-card/50 border-border/50">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Server className="w-4 h-4 text-primary" />
-              <span className="text-xs text-muted-foreground">Validators</span>
-            </div>
-            <p className="text-xl font-bold text-foreground">{stats.totalValidators}</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-card/50 border-border/50">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Globe className="w-4 h-4 text-primary" />
-              <span className="text-xs text-muted-foreground">Fullnodes</span>
-            </div>
-            <p className="text-xl font-bold text-foreground">{stats.totalFullnodes}</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-card/50 border-border/50">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <MapPin className="w-4 h-4 text-primary" />
-              <span className="text-xs text-muted-foreground">Countries</span>
-            </div>
-            <p className="text-xl font-bold text-foreground">{stats.countries}</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-card/50 border-border/50">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Building2 className="w-4 h-4 text-primary" />
-              <span className="text-xs text-muted-foreground">Cities</span>
-            </div>
-            <p className="text-xl font-bold text-foreground">{stats.cities}</p>
-          </CardContent>
-        </Card>
-      </div>
-      
-      {/* Static data indicator */}
-      <p className="text-[10px] text-muted-foreground text-center">
-        Validator data from Aptos Explorer • Dec 2024
-      </p>
-
+    <div className="space-y-3 p-4">
       {/* Staking Stats */}
       <Card className="bg-card/50 border-border/50">
         <CardContent className="p-3">
@@ -103,6 +51,11 @@ export function NetworkStatsPanel({ stats }: NetworkStatsPanelProps) {
           </p>
         </CardContent>
       </Card>
+      
+      {/* Static data indicator */}
+      <p className="text-[10px] text-muted-foreground text-center">
+        Staking data from Aptos Explorer • Dec 2024
+      </p>
     </div>
   );
 }
