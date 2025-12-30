@@ -77,6 +77,17 @@
 - **Add New Wallets**: Simple interface to add and track additional addresses
 - **Auto-Save**: Automatically saves analyzed wallets for future use
 
+### 🌐 Network Globe (NEW)
+- **3D Interactive Globe**: Visualize the Aptos network with a real-time 3D globe showing validator locations
+- **Live TPS Chart**: Real-time transactions per second calculated from ledger version changes
+- **Transaction Type Distribution**: Live pie chart showing breakdown of transaction types (user, block metadata, state checkpoint)
+- **Epoch Progress**: Real-time epoch countdown with progress bar calculated from blockchain timestamps
+- **Validator Nodes**: 148 validators displayed at accurate geographic locations across 28 countries and 52 cities
+- **Live Transaction Feed**: Stream of real-time transactions with details (hash, type, amount, gas cost)
+- **Transaction Visualization**: Animated pulses on globe showing live transaction activity
+- **Network Statistics**: Staking data, total supply, and APR rewards display
+- **Blockchain State**: Live block height, latest version, and total transaction count
+
 ### Network Support
 - **Mainnet Integration**: Full support for Aptos mainnet
 - **Testnet Support**: Test features on Aptos testnet
@@ -96,6 +107,9 @@
 - **React Router** - Client-side routing
 - **Sonner** - Toast notifications
 - **Recharts** - Interactive charts and data visualization
+- **React Three Fiber** - 3D graphics with Three.js for the Network Globe
+- **@react-three/drei** - Useful helpers for React Three Fiber
+- **Three.js** - 3D library for globe visualization
 - **html2canvas** - Generate shareable images from DOM elements
 - **jsPDF** - PDF generation for export functionality
 - **date-fns** - Date formatting and manipulation
@@ -173,9 +187,18 @@ tracktos/
 │   │   │   ├── TransactionAnalyticsCard.tsx # Heatmap, charts, top contracts
 │   │   │   ├── DeFiActivityCard.tsx        # Swap history, protocol analytics
 │   │   │   └── ShareExportCard.tsx         # Generate shareable images
+│   │   ├── globe/           # Network Globe components
+│   │   │   ├── GlobeScene.tsx              # 3D globe with validator nodes
+│   │   │   ├── TransactionFeed.tsx         # Live transaction stream
+│   │   │   ├── NetworkStatsPanel.tsx       # Network statistics display
+│   │   │   ├── TPSChart.tsx                # Live TPS sparkline chart
+│   │   │   ├── TransactionTypeChart.tsx    # Transaction type pie chart
+│   │   │   └── EpochProgress.tsx           # Real-time epoch countdown
 │   │   └── ui/              # Reusable UI components (Shadcn)
 │   ├── hooks/               # Custom React hooks
-│   │   └── use-toast.ts     # Toast notification hook
+│   │   ├── use-toast.ts     # Toast notification hook
+│   │   ├── useRealtimeTransactions.ts  # Live blockchain transaction fetching
+│   │   └── useValidatorNodes.ts        # Validator node data and locations
 │   ├── lib/
 │   │   ├── utils.ts         # Utility functions
 │   │   ├── formatters.ts    # Number and currency formatters
@@ -184,20 +207,26 @@ tracktos/
 │   │   └── supabase/        # Supabase client & types
 │   ├── pages/
 │   │   ├── Index.tsx        # Main dashboard page
+│   │   ├── Globe.tsx        # Network Globe visualization page
 │   │   └── NotFound.tsx     # 404 page
 │   ├── App.tsx              # Root component
 │   ├── main.tsx             # Application entry point
 │   └── index.css            # Global styles & design system
+├── public/
+│   └── textures/            # 3D globe textures
+│       ├── earth-blue-marble.jpg
+│       └── earth-topology.png
 ├── supabase/
 │   ├── functions/
 │   │   ├── aptos/                      # Main Aptos data fetching
+│   │   │   └── index.ts
+│   │   ├── aptos-transactions/         # Real-time transaction fetching for globe
 │   │   │   └── index.ts
 │   │   ├── portfolio-history/          # Portfolio value tracking
 │   │   │   └── index.ts
 │   │   └── generate-wallet-background/ # Custom card background generation
 │   │       └── index.ts
 │   └── config.toml          # Supabase configuration
-├── public/                  # Static public assets
 └── package.json             # Project dependencies
 ```
 
@@ -413,12 +442,14 @@ Managed automatically by Lovable Cloud:
 
 ## 🎨 Design Features
 
+- **3D Network Visualization**: Interactive globe with real-time validator and transaction display
 - **Glassmorphism Effects**: Modern backdrop blur and transparency
 - **Gradient Accents**: Subtle gradients for visual hierarchy
 - **Hover Animations**: Smooth transitions and scale effects
 - **Responsive Grid Layouts**: Adapts to all screen sizes
 - **Dark Mode Ready**: Full dark mode support via CSS variables
 - **Loading States**: Skeleton screens for better UX
+- **Real-time Updates**: Live data streaming with visual indicators
 
 ## 🚢 Deployment
 
