@@ -90,9 +90,11 @@ export default function GlobePage() {
             style={{ background: 'transparent' }}
           >
             <Suspense fallback={null}>
-              <ambientLight intensity={0.4} />
-              <pointLight position={[10, 10, 10]} intensity={1.2} />
-              <pointLight position={[-10, -10, -10]} intensity={0.4} color="#00d9ff" />
+              <ambientLight intensity={1.2} />
+              <directionalLight position={[5, 3, 5]} intensity={2} />
+              <directionalLight position={[-5, -3, -5]} intensity={0.8} color="#4da6ff" />
+              <pointLight position={[10, 10, 10]} intensity={1.5} />
+              <hemisphereLight intensity={0.6} groundColor="#000000" />
               <Stars radius={100} depth={50} count={2000} factor={4} saturation={0} fade speed={0.5} />
               <GlobeScene 
                 transactions={transactions}

@@ -243,9 +243,11 @@ export function GlobeScene({ transactions, validators, onTransactionSelect }: Gl
         <meshStandardMaterial 
           map={earthTexture}
           bumpMap={bumpTexture}
-          bumpScale={0.05}
-          metalness={0.1}
-          roughness={0.7}
+          bumpScale={0.03}
+          metalness={0}
+          roughness={0.6}
+          emissive="#1a3a5c"
+          emissiveIntensity={0.15}
         />
       </Sphere>
       
