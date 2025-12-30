@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Sparkles, Plus, RefreshCw } from "lucide-react";
+import { Loader2, Sparkles, Plus, RefreshCw, Globe } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -345,6 +345,15 @@ export default function IndexPage() {
         {/* Header */}
         <div className="space-y-2">
           <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <Link 
+                to="/globe" 
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 border border-primary/30 transition-colors"
+              >
+                <Globe className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-primary">Live Network</span>
+              </Link>
+            </div>
             <div className="flex items-center justify-center gap-3 flex-1">
               <img src={aptosLogo} alt="Aptos Logo" className="w-10 h-10" />
               <h1 className="text-4xl font-bold text-foreground">
