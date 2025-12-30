@@ -134,8 +134,9 @@ function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
   return (
     <group>
       {validators.map((validator) => {
+        const id = `${validator.city}|${validator.country}`;
         const position = latLngToVector3(validator.lat, validator.lng, 1.02);
-        const isHovered = hovered === validator.city;
+        const isHovered = hovered === id;
         
         // More visible proportional sizing based on validator count
         const baseSize = 0.015;
@@ -143,7 +144,7 @@ function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
         const size = baseSize + scaleFactor * 0.035; // Range from 0.015 to 0.05
         
         return (
-          <group key={validator.city}>
+          <group key={id}>
             {/* Pulsing outer glow - larger for more validators */}
             <mesh position={position}>
               <sphereGeometry args={[size * 2.5, 16, 16]} />
@@ -165,7 +166,7 @@ function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
             {/* Inner marker - solid core */}
             <mesh 
               position={position}
-              onPointerOver={() => setHovered(validator.city)}
+              onPointerOver={() => setHovered(id)}
               onPointerOut={() => setHovered(null)}
             >
               <sphereGeometry args={[size, 16, 16]} />
