@@ -10,6 +10,7 @@ interface GlobeSceneProps {
   transactions: Transaction[];
   validators: ValidatorNode[];
   onTransactionSelect: (tx: Transaction | null) => void;
+  getValidatorLocation?: (proposerAddress: string | null) => ValidatorNode | null;
 }
 
 // Convert lat/lng to 3D coordinates on sphere
@@ -24,55 +25,101 @@ function latLngToVector3(lat: number, lng: number, radius: number = 1): THREE.Ve
   return new THREE.Vector3(x, y, z);
 }
 
-// Transaction pulse effects on validator nodes
+// Transaction pulse effects on validator nodes - now uses real proposer data
 interface TransactionPulse {
   id: string;
-  validatorIndex: number;
+  validatorCity: string;
+  lat: number;
+  lng: number;
   progress: number;
   color: THREE.Color;
   type: string;
+  proposer: string | null;
 }
 
 function TransactionPulses({ 
   transactions, 
-  validators 
+  validators,
+  getValidatorLocation 
 }: { 
   transactions: Transaction[];
   validators: ValidatorNode[];
+  getValidatorLocation?: (proposerAddress: string | null) => ValidatorNode | null;
 }) {
   const pulsesRef = useRef<TransactionPulse[]>([]);
-  const lastTxRef = useRef<string>("");
+  const processedTxRef = useRef<Set<string>>(new Set());
   const [, forceUpdate] = useState(0);
 
   // Add new pulses when new transactions arrive
   useEffect(() => {
     if (transactions.length === 0 || validators.length === 0) return;
     
-    const latestTx = transactions[0];
-    if (latestTx.hash === lastTxRef.current) return;
-    lastTxRef.current = latestTx.hash;
-
-    // Create pulse at a random validator node
-    const validatorIndex = Math.floor(Math.random() * validators.length);
+    // Process new transactions that haven't been seen
+    const newPulses: TransactionPulse[] = [];
     
-    let color = new THREE.Color("#00d9ff");
-    if (latestTx.type === "Transfer") color = new THREE.Color("#00ff88");
-    if (latestTx.type === "Swap") color = new THREE.Color("#ff6b00");
-    if (latestTx.type === "Stake") color = new THREE.Color("#bf00ff");
-    if (latestTx.type === "NFT") color = new THREE.Color("#ffcc00");
-    if (latestTx.type === "Contract") color = new THREE.Color("#00aaff");
+    for (const tx of transactions.slice(0, 5)) {
+      if (processedTxRef.current.has(tx.hash)) continue;
+      processedTxRef.current.add(tx.hash);
+      
+      // Get validator location from proposer address
+      let validator: ValidatorNode | null = null;
+      
+      if (tx.proposer && getValidatorLocation) {
+        validator = getValidatorLocation(tx.proposer);
+      }
+      
+      // Fallback: if no proposer or mapping, use weighted random distribution
+      if (!validator) {
+        // Use deterministic selection based on transaction hash
+        let hash = 0;
+        for (let i = 0; i < tx.hash.length; i++) {
+          hash = ((hash << 5) - hash) + tx.hash.charCodeAt(i);
+          hash = hash & hash;
+        }
+        const totalCount = validators.reduce((sum, v) => sum + v.count, 0);
+        const target = Math.abs(hash) % totalCount;
+        let cumulative = 0;
+        for (const v of validators) {
+          cumulative += v.count;
+          if (target < cumulative) {
+            validator = v;
+            break;
+          }
+        }
+        if (!validator) validator = validators[0];
+      }
+      
+      let color = new THREE.Color("#00d9ff");
+      if (tx.type === "Transfer") color = new THREE.Color("#00ff88");
+      if (tx.type === "Swap") color = new THREE.Color("#ff6b00");
+      if (tx.type === "Stake") color = new THREE.Color("#bf00ff");
+      if (tx.type === "NFT") color = new THREE.Color("#ffcc00");
+      if (tx.type === "Contract") color = new THREE.Color("#00aaff");
 
-    pulsesRef.current = [
-      {
-        id: latestTx.hash,
-        validatorIndex,
+      newPulses.push({
+        id: tx.hash,
+        validatorCity: validator.city,
+        lat: validator.lat,
+        lng: validator.lng,
         progress: 0,
         color,
-        type: latestTx.type,
-      },
-      ...pulsesRef.current.slice(0, 20), // Keep max 20 pulses
-    ];
-  }, [transactions, validators]);
+        type: tx.type,
+        proposer: tx.proposer,
+      });
+    }
+    
+    if (newPulses.length > 0) {
+      pulsesRef.current = [...newPulses, ...pulsesRef.current].slice(0, 25);
+    }
+    
+    // Clean up old processed transactions
+    if (processedTxRef.current.size > 200) {
+      const txHashes = new Set(transactions.map(t => t.hash));
+      processedTxRef.current = new Set(
+        [...processedTxRef.current].filter(h => txHashes.has(h))
+      );
+    }
+  }, [transactions, validators, getValidatorLocation]);
 
   useFrame((_, delta) => {
     let needsUpdate = false;
@@ -91,10 +138,7 @@ function TransactionPulses({
   return (
     <group>
       {pulsesRef.current.map((pulse) => {
-        const validator = validators[pulse.validatorIndex];
-        if (!validator) return null;
-        
-        const position = latLngToVector3(validator.lat, validator.lng, 1.02);
+        const position = latLngToVector3(pulse.lat, pulse.lng, 1.02);
         const opacity = Math.max(0, 1 - pulse.progress * 0.5);
         const scale = 1 + pulse.progress * 2;
         
@@ -212,7 +256,7 @@ function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
   );
 }
 
-export function GlobeScene({ transactions, validators, onTransactionSelect }: GlobeSceneProps) {
+export function GlobeScene({ transactions, validators, onTransactionSelect, getValidatorLocation }: GlobeSceneProps) {
   const globeRef = useRef<THREE.Mesh>(null);
   const cloudsRef = useRef<THREE.Mesh>(null);
   
@@ -275,10 +319,11 @@ export function GlobeScene({ transactions, validators, onTransactionSelect }: Gl
       {/* Validator node markers */}
       <ValidatorMarkers validators={validators} />
       
-      {/* Transaction pulse effects on validators */}
+      {/* Transaction pulse effects on validators - now uses real proposer data */}
       <TransactionPulses 
         transactions={transactions} 
         validators={validators}
+        getValidatorLocation={getValidatorLocation}
       />
     </group>
   );

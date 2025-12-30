@@ -17,7 +17,7 @@ import aptosLogo from "@/assets/aptos-logo.png";
 
 export default function GlobePage() {
   const { transactions, stats: txStats, isConnected, error } = useRealtimeTransactions();
-  const { validators, stats: networkStats } = useValidatorNodes();
+  const { validators, stats: networkStats, getValidatorLocation } = useValidatorNodes();
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
 
   return (
@@ -123,6 +123,7 @@ export default function GlobePage() {
                 transactions={transactions}
                 validators={validators}
                 onTransactionSelect={setSelectedTransaction}
+                getValidatorLocation={getValidatorLocation}
               />
               <OrbitControls
                 enableZoom={true}
