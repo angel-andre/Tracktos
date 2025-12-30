@@ -5,7 +5,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const APTOS_INDEXER_URL = "https://api.mainnet.aptoslabs.com/v1/graphql";
+const APTOS_REST_URL = "https://api.mainnet.aptoslabs.com/v1";
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -16,78 +16,99 @@ serve(async (req) => {
   try {
     const { limit = 10 } = await req.json();
     
-    console.log(`Fetching ${limit} recent transactions from Aptos...`);
+    console.log(`Fetching ${limit} recent transactions from Aptos REST API...`);
 
-    // Query recent transactions from Aptos Indexer
-    const query = `
-      query GetRecentTransactions($limit: Int!) {
-        coin_activities(
-          limit: $limit
-          order_by: { transaction_version: desc }
-          where: { activity_type: { _eq: "0x1::coin::TransferEvent" } }
-        ) {
-          transaction_version
-          transaction_timestamp
-          activity_type
-          amount
-          owner_address
-          coin_type
-          entry_function_id_str
-        }
-      }
-    `;
-
-    const response = await fetch(APTOS_INDEXER_URL, {
-      method: 'POST',
+    // Use the REST API to get recent transactions
+    const response = await fetch(`${APTOS_REST_URL}/transactions?limit=${limit}`, {
+      method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        query,
-        variables: { limit },
-      }),
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Aptos API error: ${response.status}`, errorText);
       throw new Error(`Aptos API error: ${response.status}`);
     }
 
-    const result = await response.json();
-    
-    if (result.errors) {
-      console.error("GraphQL errors:", result.errors);
-      throw new Error(result.errors[0]?.message || "GraphQL query failed");
-    }
-
-    const activities = result.data?.coin_activities || [];
+    const rawTransactions = await response.json();
+    console.log(`Received ${rawTransactions.length} raw transactions`);
     
     // Transform to our transaction format
-    const transactions = activities.map((activity: any) => {
-      const aptAmount = activity.coin_type?.includes("AptosCoin") 
-        ? parseFloat(activity.amount) / 100000000 
-        : parseFloat(activity.amount);
-      
-      // Determine transaction type from entry function
-      let type = "Transfer";
-      const entryFunction = activity.entry_function_id_str || "";
-      if (entryFunction.includes("swap")) type = "Swap";
-      if (entryFunction.includes("stake")) type = "Stake";
-      if (entryFunction.includes("mint") || entryFunction.includes("nft")) type = "NFT";
-      
-      return {
-        hash: `0x${activity.transaction_version}`,
-        type,
-        sender: activity.owner_address,
-        receiver: activity.owner_address, // Simplified - would need full tx data for actual receiver
-        amount: aptAmount,
-        timestamp: new Date(activity.transaction_timestamp).getTime(),
-      };
+    const transactions = rawTransactions
+      .filter((tx: any) => tx.type === 'user_transaction')
+      .map((tx: any) => {
+        // Determine transaction type from payload
+        let type = "Transaction";
+        const functionName = tx.payload?.function || "";
+        
+        if (functionName.includes("transfer") || functionName.includes("coin")) {
+          type = "Transfer";
+        } else if (functionName.includes("swap") || functionName.includes("liquidity")) {
+          type = "Swap";
+        } else if (functionName.includes("stake") || functionName.includes("delegation")) {
+          type = "Stake";
+        } else if (functionName.includes("mint") || functionName.includes("nft") || functionName.includes("token")) {
+          type = "NFT";
+        } else if (functionName.includes("::")) {
+          type = "Contract";
+        }
+
+        // Extract amount if it's a coin transfer
+        let amount = 0;
+        if (tx.payload?.arguments && tx.payload.arguments.length > 0) {
+          const potentialAmount = tx.payload.arguments[tx.payload.arguments.length - 1];
+          if (typeof potentialAmount === 'string' && /^\d+$/.test(potentialAmount)) {
+            amount = parseFloat(potentialAmount) / 100000000; // Convert from octas to APT
+          }
+        }
+
+        // Get gas used
+        const gasUsed = tx.gas_used ? parseInt(tx.gas_used) : 0;
+        const gasUnitPrice = tx.gas_unit_price ? parseInt(tx.gas_unit_price) : 100;
+        const gasCost = (gasUsed * gasUnitPrice) / 100000000; // Convert to APT
+
+        return {
+          hash: tx.hash,
+          version: tx.version,
+          type,
+          sender: tx.sender,
+          success: tx.success,
+          timestamp: parseInt(tx.timestamp) / 1000, // Convert microseconds to milliseconds
+          gasUsed,
+          gasCost,
+          amount,
+          function: tx.payload?.function || 'unknown',
+          sequenceNumber: tx.sequence_number,
+        };
+      });
+
+    console.log(`Successfully processed ${transactions.length} user transactions`);
+
+    // Also fetch ledger info for network stats
+    const ledgerResponse = await fetch(`${APTOS_REST_URL}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
     });
 
-    console.log(`Successfully fetched ${transactions.length} transactions`);
+    let ledgerInfo = null;
+    if (ledgerResponse.ok) {
+      ledgerInfo = await ledgerResponse.json();
+      console.log(`Ledger version: ${ledgerInfo.ledger_version}, Block height: ${ledgerInfo.block_height}`);
+    }
 
     return new Response(
-      JSON.stringify({ transactions }),
+      JSON.stringify({ 
+        transactions,
+        ledgerInfo: ledgerInfo ? {
+          ledgerVersion: ledgerInfo.ledger_version,
+          blockHeight: ledgerInfo.block_height,
+          chainId: ledgerInfo.chain_id,
+          epoch: ledgerInfo.epoch,
+          ledgerTimestamp: ledgerInfo.ledger_timestamp,
+        } : null
+      }),
       { 
         headers: { 
           ...corsHeaders, 
@@ -102,7 +123,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: errorMessage,
-        transactions: [] 
+        transactions: [],
+        ledgerInfo: null
       }),
       {
         status: 200, // Return 200 to allow fallback to mock data
