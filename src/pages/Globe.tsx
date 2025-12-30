@@ -2,7 +2,7 @@ import { Suspense, useState } from "react";
 import { Link } from "react-router-dom";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
-import { ArrowLeft, Activity, Globe as GlobeIcon, Zap, Server, ExternalLink, AlertCircle } from "lucide-react";
+import { ArrowLeft, Activity, Globe as GlobeIcon, Zap, Server, ExternalLink, AlertCircle, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,9 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { GlobeScene } from "@/components/globe/GlobeScene";
 import { TransactionFeed } from "@/components/globe/TransactionFeed";
 import { NetworkStatsPanel } from "@/components/globe/NetworkStatsPanel";
+import { TPSChart } from "@/components/globe/TPSChart";
+import { TransactionTypeChart } from "@/components/globe/TransactionTypeChart";
+import { EpochProgress } from "@/components/globe/EpochProgress";
 import { useRealtimeTransactions, type Transaction } from "@/hooks/useRealtimeTransactions";
 import { useValidatorNodes } from "@/hooks/useValidatorNodes";
 import aptosLogo from "@/assets/aptos-logo.png";
@@ -72,35 +75,56 @@ export default function GlobePage() {
 
       {/* Main Content */}
       <div className="relative z-0 flex h-[calc(100vh-80px)]">
-        {/* Left Panel - Network Stats */}
-        <div className="hidden lg:block w-72 border-r border-border/50 bg-card/30 backdrop-blur-xl overflow-y-auto">
+        {/* Left Panel - Network Stats & Charts */}
+        <div className="hidden lg:block w-80 border-r border-border/50 bg-card/30 backdrop-blur-xl overflow-y-auto">
           <div className="p-4 border-b border-border/30">
             <h2 className="font-semibold text-foreground flex items-center gap-2">
-              <Server className="w-4 h-4 text-primary" />
-              Network Stats
+              <BarChart3 className="w-4 h-4 text-primary" />
+              Live Analytics
             </h2>
           </div>
-          <NetworkStatsPanel stats={networkStats} />
           
-          {/* Real-time transaction stats */}
+          {/* Live Charts Section */}
+          <div className="p-3 space-y-3">
+            {/* TPS Chart */}
+            <TPSChart currentTPS={txStats.tps} peakTPS={networkStats.peakTps} />
+            
+            {/* Transaction Type Distribution */}
+            <TransactionTypeChart transactions={transactions} />
+            
+            {/* Epoch Progress */}
+            <EpochProgress 
+              epoch={parseInt(txStats.epoch) || networkStats.epoch} 
+              epochProgress={networkStats.epochProgress} 
+            />
+          </div>
+          
+          {/* Network Stats */}
+          <div className="border-t border-border/30">
+            <div className="p-4 pb-2">
+              <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+                <Server className="w-4 h-4 text-primary" />
+                Network Stats
+              </h3>
+            </div>
+            <NetworkStatsPanel stats={networkStats} />
+          </div>
+          
+          {/* Live Blockchain Data */}
           <div className="p-4 border-t border-border/30">
-            <h3 className="text-sm font-medium text-foreground mb-3">Live Blockchain Data</h3>
+            <h3 className="text-sm font-medium text-foreground mb-3">Blockchain State</h3>
             <div className="space-y-2 text-xs">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Block Height</span>
-                <span className="font-mono text-foreground">{txStats.blockHeight}</span>
+                <span className="font-mono text-foreground">{parseInt(txStats.blockHeight).toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Latest Version</span>
-                <span className="font-mono text-foreground">{txStats.latestVersion}</span>
+                <span className="font-mono text-foreground">{parseInt(txStats.latestVersion).toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Epoch</span>
-                <span className="font-mono text-foreground">{txStats.epoch}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Recent TPS</span>
-                <span className="font-mono text-primary">{txStats.tps}</span>
+                <span className="text-muted-foreground">Total Transactions</span>
+                <span className="font-mono text-primary">{(parseInt(txStats.latestVersion) / 1e9).toFixed(2)}B</span>
               </div>
             </div>
           </div>
