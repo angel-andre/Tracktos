@@ -1,5 +1,5 @@
 import { useRef, useMemo, useEffect, useState } from "react";
-import { useFrame, useLoader } from "@react-three/fiber";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { Sphere, Line, Html } from "@react-three/drei";
 import type { Transaction } from "@/hooks/useRealtimeTransactions";
@@ -132,17 +132,17 @@ function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
       {validators.map((validator) => {
         const position = latLngToVector3(validator.lat, validator.lng, 1.02);
         const isHovered = hovered === validator.city;
-        const size = Math.min(0.02 + validator.count * 0.004, 0.06);
+        const size = Math.min(0.02 + validator.count * 0.003, 0.05);
         
         return (
           <group key={validator.city}>
             {/* Outer glow */}
             <mesh position={position}>
-              <sphereGeometry args={[size * 1.5, 16, 16]} />
+              <sphereGeometry args={[size * 1.8, 16, 16]} />
               <meshBasicMaterial 
                 color="#00d9ff" 
                 transparent 
-                opacity={isHovered ? 0.4 : 0.15}
+                opacity={isHovered ? 0.5 : 0.2}
               />
             </mesh>
             {/* Inner marker */}
@@ -177,90 +177,245 @@ export function GlobeScene({ transactions, validators, onTransactionSelect }: Gl
   const globeRef = useRef<THREE.Mesh>(null);
   const cloudsRef = useRef<THREE.Mesh>(null);
   
-  // Create Earth texture with continents
+  // Create Earth texture with visible continents
   const earthTexture = useMemo(() => {
     const canvas = document.createElement('canvas');
     canvas.width = 2048;
     canvas.height = 1024;
     const ctx = canvas.getContext('2d')!;
     
-    // Ocean base - dark blue
-    ctx.fillStyle = '#0a1628';
+    // Ocean - dark blue background
+    const oceanGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    oceanGradient.addColorStop(0, '#0c1929');
+    oceanGradient.addColorStop(0.5, '#0a1525');
+    oceanGradient.addColorStop(1, '#0c1929');
+    ctx.fillStyle = oceanGradient;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Draw simplified continents
-    ctx.fillStyle = '#1a2d4a';
-    ctx.strokeStyle = '#2a4a6a';
-    ctx.lineWidth = 2;
+    // Continent colors - brighter teal/cyan for visibility
+    const landColor = '#1a4a5a';
+    const landBorder = '#2a7a8a';
+    const landHighlight = '#3a9aaa';
     
-    // North America
-    ctx.beginPath();
-    ctx.moveTo(180, 180);
-    ctx.bezierCurveTo(150, 200, 120, 280, 140, 350);
-    ctx.bezierCurveTo(160, 400, 200, 420, 280, 400);
-    ctx.bezierCurveTo(340, 380, 380, 320, 360, 260);
-    ctx.bezierCurveTo(340, 200, 300, 160, 260, 140);
-    ctx.bezierCurveTo(220, 120, 200, 140, 180, 180);
-    ctx.fill();
-    ctx.stroke();
+    ctx.fillStyle = landColor;
+    ctx.strokeStyle = landBorder;
+    ctx.lineWidth = 3;
+    
+    // Helper function to draw filled landmass
+    const drawLand = (path: () => void) => {
+      ctx.beginPath();
+      path();
+      ctx.fill();
+      ctx.stroke();
+    };
+    
+    // North America (more detailed shape)
+    drawLand(() => {
+      ctx.moveTo(120, 200);
+      ctx.lineTo(100, 240);
+      ctx.lineTo(80, 300);
+      ctx.lineTo(100, 380);
+      ctx.lineTo(140, 420);
+      ctx.lineTo(200, 440);
+      ctx.lineTo(280, 420);
+      ctx.lineTo(340, 380);
+      ctx.lineTo(380, 340);
+      ctx.lineTo(400, 280);
+      ctx.lineTo(380, 220);
+      ctx.lineTo(340, 180);
+      ctx.lineTo(280, 150);
+      ctx.lineTo(220, 140);
+      ctx.lineTo(160, 160);
+      ctx.closePath();
+    });
+    
+    // Greenland
+    drawLand(() => {
+      ctx.moveTo(420, 120);
+      ctx.lineTo(400, 160);
+      ctx.lineTo(420, 220);
+      ctx.lineTo(480, 240);
+      ctx.lineTo(520, 200);
+      ctx.lineTo(500, 140);
+      ctx.lineTo(460, 100);
+      ctx.closePath();
+    });
     
     // South America
-    ctx.beginPath();
-    ctx.moveTo(320, 480);
-    ctx.bezierCurveTo(280, 520, 260, 600, 280, 700);
-    ctx.bezierCurveTo(300, 780, 340, 820, 380, 780);
-    ctx.bezierCurveTo(400, 720, 400, 620, 380, 540);
-    ctx.bezierCurveTo(360, 480, 340, 460, 320, 480);
-    ctx.fill();
-    ctx.stroke();
+    drawLand(() => {
+      ctx.moveTo(280, 480);
+      ctx.lineTo(240, 520);
+      ctx.lineTo(220, 600);
+      ctx.lineTo(240, 700);
+      ctx.lineTo(280, 780);
+      ctx.lineTo(340, 840);
+      ctx.lineTo(380, 820);
+      ctx.lineTo(400, 740);
+      ctx.lineTo(420, 640);
+      ctx.lineTo(400, 560);
+      ctx.lineTo(360, 500);
+      ctx.lineTo(320, 470);
+      ctx.closePath();
+    });
     
     // Europe
-    ctx.beginPath();
-    ctx.moveTo(980, 180);
-    ctx.bezierCurveTo(940, 200, 920, 260, 940, 320);
-    ctx.bezierCurveTo(960, 360, 1020, 380, 1080, 360);
-    ctx.bezierCurveTo(1140, 340, 1180, 280, 1160, 220);
-    ctx.bezierCurveTo(1140, 180, 1080, 160, 1020, 160);
-    ctx.bezierCurveTo(1000, 160, 990, 170, 980, 180);
-    ctx.fill();
-    ctx.stroke();
+    drawLand(() => {
+      ctx.moveTo(940, 200);
+      ctx.lineTo(920, 240);
+      ctx.lineTo(900, 300);
+      ctx.lineTo(920, 360);
+      ctx.lineTo(980, 380);
+      ctx.lineTo(1060, 380);
+      ctx.lineTo(1120, 360);
+      ctx.lineTo(1160, 320);
+      ctx.lineTo(1180, 260);
+      ctx.lineTo(1160, 200);
+      ctx.lineTo(1100, 160);
+      ctx.lineTo(1020, 160);
+      ctx.lineTo(960, 180);
+      ctx.closePath();
+    });
+    
+    // UK/Ireland
+    drawLand(() => {
+      ctx.moveTo(880, 220);
+      ctx.lineTo(870, 260);
+      ctx.lineTo(880, 300);
+      ctx.lineTo(910, 300);
+      ctx.lineTo(920, 260);
+      ctx.lineTo(910, 220);
+      ctx.closePath();
+    });
     
     // Africa
-    ctx.beginPath();
-    ctx.moveTo(980, 400);
-    ctx.bezierCurveTo(920, 420, 900, 500, 920, 600);
-    ctx.bezierCurveTo(940, 700, 1000, 760, 1080, 740);
-    ctx.bezierCurveTo(1140, 720, 1180, 640, 1160, 540);
-    ctx.bezierCurveTo(1140, 460, 1080, 400, 1020, 380);
-    ctx.bezierCurveTo(1000, 380, 990, 390, 980, 400);
-    ctx.fill();
-    ctx.stroke();
+    drawLand(() => {
+      ctx.moveTo(940, 420);
+      ctx.lineTo(900, 480);
+      ctx.lineTo(880, 560);
+      ctx.lineTo(900, 660);
+      ctx.lineTo(960, 760);
+      ctx.lineTo(1040, 800);
+      ctx.lineTo(1120, 780);
+      ctx.lineTo(1180, 700);
+      ctx.lineTo(1200, 600);
+      ctx.lineTo(1180, 500);
+      ctx.lineTo(1120, 440);
+      ctx.lineTo(1040, 400);
+      ctx.lineTo(980, 400);
+      ctx.closePath();
+    });
     
-    // Asia
-    ctx.beginPath();
-    ctx.moveTo(1200, 160);
-    ctx.bezierCurveTo(1160, 180, 1140, 240, 1160, 320);
-    ctx.bezierCurveTo(1180, 400, 1240, 460, 1340, 480);
-    ctx.bezierCurveTo(1480, 500, 1600, 460, 1680, 380);
-    ctx.bezierCurveTo(1760, 300, 1780, 220, 1720, 160);
-    ctx.bezierCurveTo(1640, 100, 1500, 80, 1400, 100);
-    ctx.bezierCurveTo(1300, 120, 1240, 140, 1200, 160);
-    ctx.fill();
-    ctx.stroke();
+    // Asia (main block)
+    drawLand(() => {
+      ctx.moveTo(1200, 180);
+      ctx.lineTo(1160, 240);
+      ctx.lineTo(1180, 320);
+      ctx.lineTo(1220, 400);
+      ctx.lineTo(1300, 460);
+      ctx.lineTo(1400, 500);
+      ctx.lineTo(1520, 500);
+      ctx.lineTo(1640, 460);
+      ctx.lineTo(1720, 400);
+      ctx.lineTo(1780, 320);
+      ctx.lineTo(1800, 240);
+      ctx.lineTo(1780, 180);
+      ctx.lineTo(1700, 120);
+      ctx.lineTo(1580, 100);
+      ctx.lineTo(1460, 100);
+      ctx.lineTo(1340, 120);
+      ctx.lineTo(1260, 160);
+      ctx.closePath();
+    });
+    
+    // India
+    drawLand(() => {
+      ctx.moveTo(1340, 420);
+      ctx.lineTo(1300, 480);
+      ctx.lineTo(1320, 560);
+      ctx.lineTo(1380, 600);
+      ctx.lineTo(1440, 560);
+      ctx.lineTo(1460, 480);
+      ctx.lineTo(1420, 420);
+      ctx.closePath();
+    });
+    
+    // Southeast Asia/Indonesia
+    drawLand(() => {
+      ctx.moveTo(1520, 520);
+      ctx.lineTo(1500, 560);
+      ctx.lineTo(1520, 620);
+      ctx.lineTo(1600, 640);
+      ctx.lineTo(1680, 620);
+      ctx.lineTo(1720, 560);
+      ctx.lineTo(1680, 520);
+      ctx.lineTo(1600, 500);
+      ctx.closePath();
+    });
+    
+    // Japan
+    drawLand(() => {
+      ctx.moveTo(1760, 300);
+      ctx.lineTo(1740, 340);
+      ctx.lineTo(1760, 400);
+      ctx.lineTo(1800, 420);
+      ctx.lineTo(1840, 380);
+      ctx.lineTo(1840, 320);
+      ctx.lineTo(1800, 280);
+      ctx.closePath();
+    });
     
     // Australia
-    ctx.beginPath();
-    ctx.moveTo(1600, 600);
-    ctx.bezierCurveTo(1560, 620, 1540, 680, 1560, 740);
-    ctx.bezierCurveTo(1580, 780, 1640, 800, 1720, 780);
-    ctx.bezierCurveTo(1780, 760, 1820, 700, 1800, 640);
-    ctx.bezierCurveTo(1780, 600, 1720, 580, 1660, 580);
-    ctx.bezierCurveTo(1630, 580, 1610, 590, 1600, 600);
-    ctx.fill();
-    ctx.stroke();
+    drawLand(() => {
+      ctx.moveTo(1580, 640);
+      ctx.lineTo(1540, 700);
+      ctx.lineTo(1560, 780);
+      ctx.lineTo(1640, 840);
+      ctx.lineTo(1760, 840);
+      ctx.lineTo(1840, 780);
+      ctx.lineTo(1860, 700);
+      ctx.lineTo(1820, 640);
+      ctx.lineTo(1740, 620);
+      ctx.lineTo(1660, 620);
+      ctx.closePath();
+    });
+    
+    // New Zealand
+    drawLand(() => {
+      ctx.moveTo(1920, 760);
+      ctx.lineTo(1900, 800);
+      ctx.lineTo(1920, 860);
+      ctx.lineTo(1960, 880);
+      ctx.lineTo(1980, 840);
+      ctx.lineTo(1960, 780);
+      ctx.closePath();
+    });
+    
+    // Add highlight/glow to continents
+    ctx.fillStyle = landHighlight;
+    ctx.globalAlpha = 0.3;
+    
+    // Highlight major regions
+    const highlights = [
+      { x: 280, y: 300 }, // NA
+      { x: 320, y: 620 }, // SA
+      { x: 1040, y: 280 }, // Europe
+      { x: 1060, y: 580 }, // Africa
+      { x: 1500, y: 320 }, // Asia
+      { x: 1700, y: 720 }, // Australia
+    ];
+    
+    highlights.forEach(h => {
+      const gradient = ctx.createRadialGradient(h.x, h.y, 0, h.x, h.y, 120);
+      gradient.addColorStop(0, 'rgba(42, 122, 138, 0.5)');
+      gradient.addColorStop(1, 'rgba(42, 122, 138, 0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    });
+    
+    ctx.globalAlpha = 1;
     
     // Add grid lines
-    ctx.strokeStyle = 'rgba(0, 217, 255, 0.08)';
+    ctx.strokeStyle = 'rgba(0, 180, 220, 0.12)';
     ctx.lineWidth = 1;
     
     // Latitude lines
@@ -272,7 +427,7 @@ export function GlobeScene({ transactions, validators, onTransactionSelect }: Gl
       ctx.stroke();
     }
     
-    // Longitude lines
+    // Longitude lines  
     for (let lng = 0; lng < 360; lng += 20) {
       const x = lng / 360 * canvas.width;
       ctx.beginPath();
@@ -281,39 +436,15 @@ export function GlobeScene({ transactions, validators, onTransactionSelect }: Gl
       ctx.stroke();
     }
     
-    // Add subtle glow spots for major tech hubs
-    const glowSpots = [
-      { x: 0.12, y: 0.38 }, // Silicon Valley
-      { x: 0.15, y: 0.35 }, // NYC
-      { x: 0.50, y: 0.32 }, // London
-      { x: 0.52, y: 0.34 }, // Frankfurt
-      { x: 0.56, y: 0.30 }, // Helsinki
-      { x: 0.85, y: 0.36 }, // Tokyo
-      { x: 0.82, y: 0.42 }, // Hong Kong
-      { x: 0.80, y: 0.38 }, // Seoul
-      { x: 0.87, y: 0.65 }, // Sydney
-    ];
-    
-    glowSpots.forEach((spot) => {
-      const gradient = ctx.createRadialGradient(
-        spot.x * canvas.width, spot.y * canvas.height, 0,
-        spot.x * canvas.width, spot.y * canvas.height, 40
-      );
-      gradient.addColorStop(0, 'rgba(0, 217, 255, 0.3)');
-      gradient.addColorStop(1, 'rgba(0, 217, 255, 0)');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    });
-    
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
     return texture;
   }, []);
 
-  // Subtle rotation for clouds layer
+  // Subtle rotation for atmosphere
   useFrame((_, delta) => {
     if (cloudsRef.current) {
-      cloudsRef.current.rotation.y += delta * 0.015;
+      cloudsRef.current.rotation.y += delta * 0.01;
     }
   });
 
@@ -321,39 +452,35 @@ export function GlobeScene({ transactions, validators, onTransactionSelect }: Gl
     <group>
       {/* Main globe */}
       <Sphere ref={globeRef} args={[1, 64, 64]}>
-        <meshStandardMaterial
-          map={earthTexture}
-          metalness={0.1}
-          roughness={0.7}
-        />
+        <meshBasicMaterial map={earthTexture} />
       </Sphere>
       
-      {/* Atmosphere inner glow */}
-      <Sphere args={[0.995, 32, 32]}>
+      {/* Atmosphere glow - inner */}
+      <Sphere args={[1.02, 32, 32]}>
         <meshBasicMaterial
-          color="#00d9ff"
+          color="#00b4dc"
           transparent
-          opacity={0.03}
+          opacity={0.05}
           side={THREE.BackSide}
         />
       </Sphere>
       
-      {/* Atmosphere outer glow */}
+      {/* Atmosphere glow - outer */}
       <Sphere args={[1.08, 32, 32]}>
         <meshBasicMaterial
           color="#00d9ff"
           transparent
-          opacity={0.08}
+          opacity={0.1}
           side={THREE.BackSide}
         />
       </Sphere>
       
-      {/* Second atmosphere layer */}
-      <Sphere ref={cloudsRef} args={[1.02, 32, 32]}>
+      {/* Wireframe overlay for tech look */}
+      <Sphere ref={cloudsRef} args={[1.01, 24, 24]}>
         <meshBasicMaterial
           color="#00d9ff"
           transparent
-          opacity={0.02}
+          opacity={0.03}
           wireframe
         />
       </Sphere>
