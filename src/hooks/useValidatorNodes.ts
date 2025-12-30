@@ -249,18 +249,8 @@ export function useValidatorNodes() {
     return validators[index];
   }, [validators]);
 
-  // Simulate real-time TPS fluctuation
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setStats(prev => ({
-        ...prev,
-        tps: Math.max(50, Math.min(200, prev.tps + (Math.random() - 0.5) * 20)),
-        epochProgress: Math.min(100, prev.epochProgress + 0.02),
-      }));
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, []);
+  // Note: epochProgress is now calculated in the Globe page from real ledger data
+  // We no longer simulate it here
 
   return { validators, stats, isLoading, getValidatorLocation };
 }
