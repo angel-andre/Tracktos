@@ -56,66 +56,98 @@ interface TransactionArc {
 }
 
 function TransactionArcs({ transactions, onTransactionSelect }: { transactions: Transaction[], onTransactionSelect: (tx: Transaction | null) => void }) {
-  const [arcs, setArcs] = useState<TransactionArc[]>([]);
+  const arcsRef = useRef<TransactionArc[]>([]);
+  const [, forceUpdate] = useState(0);
   
+  // Add new transactions without replacing existing ones
   useEffect(() => {
-    const newArcs = transactions.slice(0, 15).map((tx) => {
-      const start = latLngToVector3(tx.fromLat, tx.fromLng, 1.01);
-      const end = latLngToVector3(tx.toLat, tx.toLng, 1.01);
-      const points = generateArcPoints(start, end);
-      
-      let color = new THREE.Color("#00d9ff");
-      if (tx.type === "Transfer") color = new THREE.Color("#00ff88");
-      if (tx.type === "Swap") color = new THREE.Color("#ff6b00");
-      if (tx.type === "Stake") color = new THREE.Color("#bf00ff");
-      if (tx.type === "NFT") color = new THREE.Color("#ffcc00");
-      
-      return {
-        id: tx.hash,
-        points,
-        progress: 0,
-        color,
-        startPoint: start,
-        endPoint: end,
-        transaction: tx,
-      };
-    });
+    const existingIds = new Set(arcsRef.current.map(a => a.id));
     
-    setArcs(newArcs);
+    const newArcs = transactions.slice(0, 20)
+      .filter(tx => !existingIds.has(tx.hash))
+      .map((tx) => {
+        const start = latLngToVector3(tx.fromLat, tx.fromLng, 1.01);
+        const end = latLngToVector3(tx.toLat, tx.toLng, 1.01);
+        const points = generateArcPoints(start, end);
+        
+        let color = new THREE.Color("#00d9ff");
+        if (tx.type === "Transfer") color = new THREE.Color("#00ff88");
+        if (tx.type === "Swap") color = new THREE.Color("#ff6b00");
+        if (tx.type === "Stake") color = new THREE.Color("#bf00ff");
+        if (tx.type === "NFT") color = new THREE.Color("#ffcc00");
+        
+        return {
+          id: tx.hash,
+          points,
+          progress: 0,
+          color,
+          startPoint: start,
+          endPoint: end,
+          transaction: tx,
+        };
+      });
+    
+    if (newArcs.length > 0) {
+      arcsRef.current = [...arcsRef.current, ...newArcs].slice(-25); // Keep max 25 arcs
+    }
   }, [transactions]);
   
   useFrame((_, delta) => {
-    setArcs((prev) =>
-      prev.map((arc) => ({
-        ...arc,
-        progress: Math.min(arc.progress + delta * 0.4, 1),
-      })).filter((arc) => arc.progress < 1)
-    );
+    let needsUpdate = false;
+    
+    arcsRef.current = arcsRef.current
+      .map((arc) => {
+        const newProgress = Math.min(arc.progress + delta * 0.25, 1.5); // Slower, extends past 1 for fade
+        if (newProgress !== arc.progress) needsUpdate = true;
+        return { ...arc, progress: newProgress };
+      })
+      .filter((arc) => arc.progress < 1.5); // Remove only after full fade
+    
+    if (needsUpdate) forceUpdate(n => n + 1);
   });
 
   return (
     <group>
-      {arcs.map((arc) => {
-        const visiblePoints = Math.floor(arc.points.length * arc.progress);
+      {arcsRef.current.map((arc) => {
+        // Draw progress (0-1 draws the line, 1-1.5 fades out)
+        const drawProgress = Math.min(arc.progress, 1);
+        const fadeProgress = arc.progress > 1 ? (arc.progress - 1) * 2 : 0; // 0-1 fade after draw complete
+        const opacity = Math.max(0, 1 - fadeProgress);
+        
+        const visiblePoints = Math.floor(arc.points.length * drawProgress);
         const displayPoints = arc.points.slice(0, Math.max(visiblePoints, 2));
+        
+        // Traveling dot position
+        const dotIndex = Math.min(visiblePoints, arc.points.length - 1);
+        const dotPosition = arc.points[dotIndex] || arc.startPoint;
         
         return (
           <group key={arc.id}>
+            {/* Main arc line */}
             <Line
               points={displayPoints}
               color={arc.color}
-              lineWidth={1.5}
+              lineWidth={2}
               transparent
-              opacity={1 - arc.progress * 0.5}
+              opacity={opacity * 0.8}
             />
+            {/* Traveling dot along the arc */}
+            {drawProgress < 1 && (
+              <mesh position={dotPosition}>
+                <sphereGeometry args={[0.008, 8, 8]} />
+                <meshBasicMaterial color="#ffffff" transparent opacity={0.9} />
+              </mesh>
+            )}
+            {/* Start point glow */}
             <mesh position={arc.startPoint}>
-              <sphereGeometry args={[0.012, 12, 12]} />
-              <meshBasicMaterial color={arc.color} transparent opacity={0.8 - arc.progress * 0.5} />
+              <sphereGeometry args={[0.006, 8, 8]} />
+              <meshBasicMaterial color={arc.color} transparent opacity={opacity * 0.6} />
             </mesh>
-            {arc.progress > 0.8 && (
+            {/* End point pulse on arrival */}
+            {drawProgress >= 0.95 && (
               <mesh position={arc.endPoint}>
-                <sphereGeometry args={[0.015 + (arc.progress - 0.8) * 0.08, 12, 12]} />
-                <meshBasicMaterial color={arc.color} transparent opacity={(1 - arc.progress) * 2} />
+                <sphereGeometry args={[0.008 + fadeProgress * 0.02, 8, 8]} />
+                <meshBasicMaterial color={arc.color} transparent opacity={opacity * 0.8} />
               </mesh>
             )}
           </group>
