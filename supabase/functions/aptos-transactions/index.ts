@@ -7,6 +7,9 @@ const corsHeaders = {
 
 const APTOS_REST_URL = "https://api.mainnet.aptoslabs.com/v1";
 
+// Cache for block proposers to avoid redundant API calls
+const blockProposerCache = new Map<string, string>();
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -35,9 +38,53 @@ serve(async (req) => {
     const rawTransactions = await response.json();
     console.log(`Received ${rawTransactions.length} raw transactions`);
     
+    // Get unique block heights from transactions to fetch proposer info
+    const versionToBlockMap = new Map<string, string>();
+    
+    // Fetch block info for transactions to get proposers
+    // Group by approximate block (transactions close together are likely in same block)
+    const userTransactions = rawTransactions.filter((tx: any) => tx.type === 'user_transaction');
+    
+    // Fetch block info for a sample of transactions to get proposer data
+    const proposerPromises: Promise<void>[] = [];
+    const versionsToFetch = new Set<string>();
+    
+    for (const tx of userTransactions.slice(0, 10)) {
+      const version = tx.version;
+      if (!blockProposerCache.has(version)) {
+        versionsToFetch.add(version);
+      }
+    }
+    
+    // Fetch block info for each unique version
+    for (const version of versionsToFetch) {
+      proposerPromises.push(
+        fetch(`${APTOS_REST_URL}/blocks/by_version/${version}`)
+          .then(res => res.ok ? res.json() : null)
+          .then(blockData => {
+            if (blockData) {
+              // The block_metadata_transaction contains the proposer
+              const blockMetaTx = blockData.transactions?.find(
+                (t: any) => t.type === 'block_metadata_transaction'
+              );
+              if (blockMetaTx?.proposer) {
+                // Cache the proposer for all versions in this block
+                const firstVersion = blockData.first_version;
+                const lastVersion = blockData.last_version;
+                for (let v = parseInt(firstVersion); v <= parseInt(lastVersion); v++) {
+                  blockProposerCache.set(v.toString(), blockMetaTx.proposer);
+                }
+              }
+            }
+          })
+          .catch(err => console.error(`Error fetching block for version ${version}:`, err))
+      );
+    }
+    
+    await Promise.all(proposerPromises);
+    
     // Transform to our transaction format
-    const transactions = rawTransactions
-      .filter((tx: any) => tx.type === 'user_transaction')
+    const transactions = userTransactions
       .map((tx: any) => {
         // Determine transaction type from payload
         let type = "Transaction";
@@ -69,6 +116,9 @@ serve(async (req) => {
         const gasUnitPrice = tx.gas_unit_price ? parseInt(tx.gas_unit_price) : 100;
         const gasCost = (gasUsed * gasUnitPrice) / 100000000; // Convert to APT
 
+        // Get the block proposer (validator) for this transaction
+        const proposer = blockProposerCache.get(tx.version) || null;
+
         return {
           hash: tx.hash,
           version: tx.version,
@@ -81,6 +131,7 @@ serve(async (req) => {
           amount,
           function: tx.payload?.function || 'unknown',
           sequenceNumber: tx.sequence_number,
+          proposer, // The validator that proposed the block containing this transaction
         };
       });
 
@@ -98,6 +149,19 @@ serve(async (req) => {
       console.log(`Ledger version: ${ledgerInfo.ledger_version}, Block height: ${ledgerInfo.block_height}`);
     }
 
+    // Fetch active validator set for mapping
+    let validatorSet = null;
+    try {
+      const validatorResponse = await fetch(
+        `${APTOS_REST_URL}/accounts/0x1/resource/0x1::stake::ValidatorSet`
+      );
+      if (validatorResponse.ok) {
+        validatorSet = await validatorResponse.json();
+      }
+    } catch (err) {
+      console.error('Error fetching validator set:', err);
+    }
+
     return new Response(
       JSON.stringify({ 
         transactions,
@@ -107,7 +171,8 @@ serve(async (req) => {
           chainId: ledgerInfo.chain_id,
           epoch: ledgerInfo.epoch,
           ledgerTimestamp: ledgerInfo.ledger_timestamp,
-        } : null
+        } : null,
+        validatorSet: validatorSet?.data || null,
       }),
       { 
         headers: { 
@@ -124,7 +189,8 @@ serve(async (req) => {
       JSON.stringify({ 
         error: errorMessage,
         transactions: [],
-        ledgerInfo: null
+        ledgerInfo: null,
+        validatorSet: null,
       }),
       {
         status: 200, // Return 200 to allow fallback to mock data

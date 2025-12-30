@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface ValidatorNode {
   city: string;
@@ -6,6 +7,8 @@ export interface ValidatorNode {
   lat: number;
   lng: number;
   count: number;
+  // Optional: known validator addresses at this location
+  knownAddresses?: string[];
 }
 
 export interface NetworkStats {
@@ -21,6 +24,13 @@ export interface NetworkStats {
   epoch: number;
   epochProgress: number;
 }
+
+// Map of known validator addresses to their city locations
+// This is built from publicly available validator info
+export const VALIDATOR_ADDRESS_TO_CITY: Record<string, string> = {
+  // These are example mappings - in production, this would be populated from
+  // validator registration data or a curated database
+};
 
 // City coordinates database for accurate globe positioning
 const CITY_COORDINATES: Record<string, { lat: number; lng: number }> = {
@@ -180,6 +190,32 @@ const VALIDATOR_NODES: ValidatorNode[] = [
   { city: "Buenos Aires", country: "Argentina", ...CITY_COORDINATES["Buenos Aires"], count: 1 },
 ];
 
+// Assign validators to locations based on proportional distribution
+// This creates a deterministic mapping from validator index to location
+function getValidatorLocationIndex(validatorAddress: string, validators: ValidatorNode[]): number {
+  // Create a simple hash from the address to get a deterministic but distributed index
+  let hash = 0;
+  for (let i = 0; i < validatorAddress.length; i++) {
+    const char = validatorAddress.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  
+  // Build weighted array based on validator counts
+  const totalValidators = validators.reduce((sum, v) => sum + v.count, 0);
+  const normalizedHash = Math.abs(hash) % totalValidators;
+  
+  let cumulative = 0;
+  for (let i = 0; i < validators.length; i++) {
+    cumulative += validators[i].count;
+    if (normalizedHash < cumulative) {
+      return i;
+    }
+  }
+  
+  return 0;
+}
+
 export function useValidatorNodes() {
   const [validators] = useState<ValidatorNode[]>(VALIDATOR_NODES);
   const [stats, setStats] = useState<NetworkStats>({
@@ -197,6 +233,22 @@ export function useValidatorNodes() {
   });
   const [isLoading] = useState(false);
 
+  // Get validator location for a given proposer address
+  const getValidatorLocation = useCallback((proposerAddress: string | null): ValidatorNode | null => {
+    if (!proposerAddress || validators.length === 0) return null;
+    
+    // Check if we have a known mapping
+    const knownCity = VALIDATOR_ADDRESS_TO_CITY[proposerAddress];
+    if (knownCity) {
+      const validator = validators.find(v => v.city === knownCity);
+      if (validator) return validator;
+    }
+    
+    // Otherwise, use deterministic distribution based on address hash
+    const index = getValidatorLocationIndex(proposerAddress, validators);
+    return validators[index];
+  }, [validators]);
+
   // Simulate real-time TPS fluctuation
   useEffect(() => {
     const interval = setInterval(() => {
@@ -210,5 +262,5 @@ export function useValidatorNodes() {
     return () => clearInterval(interval);
   }, []);
 
-  return { validators, stats, isLoading };
+  return { validators, stats, isLoading, getValidatorLocation };
 }

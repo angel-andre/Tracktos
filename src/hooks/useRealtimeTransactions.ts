@@ -13,6 +13,7 @@ export interface Transaction {
   amount: number;
   function: string;
   sequenceNumber: string;
+  proposer: string | null; // The validator address that proposed the block
 }
 
 export interface LedgerInfo {
@@ -21,6 +22,16 @@ export interface LedgerInfo {
   chainId: number;
   epoch: string;
   ledgerTimestamp: string;
+}
+
+export interface ValidatorInfo {
+  addr: string;
+  voting_power: string;
+  config?: {
+    consensus_pubkey: string;
+    validator_index: string;
+    network_addresses?: string;
+  };
 }
 
 interface TransactionStats {
