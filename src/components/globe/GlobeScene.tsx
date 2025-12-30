@@ -128,41 +128,25 @@ function TransactionArcs({ transactions, onTransactionSelect }: { transactions: 
 function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
   const [hovered, setHovered] = useState<string | null>(null);
   
-  // Calculate max count for proportional sizing
-  const maxCount = Math.max(...validators.map(v => v.count));
-  
   return (
     <group>
       {validators.map((validator) => {
         const position = latLngToVector3(validator.lat, validator.lng, 1.02);
         const isHovered = hovered === validator.city;
-        
-        // More visible proportional sizing based on validator count
-        const baseSize = 0.015;
-        const scaleFactor = validator.count / maxCount;
-        const size = baseSize + scaleFactor * 0.035; // Range from 0.015 to 0.05
+        const size = Math.min(0.02 + validator.count * 0.003, 0.05);
         
         return (
           <group key={validator.city}>
-            {/* Pulsing outer glow - larger for more validators */}
+            {/* Outer glow */}
             <mesh position={position}>
-              <sphereGeometry args={[size * 2.5, 16, 16]} />
+              <sphereGeometry args={[size * 1.8, 16, 16]} />
               <meshBasicMaterial 
                 color="#00d9ff" 
                 transparent 
-                opacity={isHovered ? 0.6 : 0.15 + scaleFactor * 0.15}
+                opacity={isHovered ? 0.5 : 0.2}
               />
             </mesh>
-            {/* Middle glow ring */}
-            <mesh position={position}>
-              <sphereGeometry args={[size * 1.5, 16, 16]} />
-              <meshBasicMaterial 
-                color="#00d9ff" 
-                transparent 
-                opacity={isHovered ? 0.7 : 0.3}
-              />
-            </mesh>
-            {/* Inner marker - solid core */}
+            {/* Inner marker */}
             <mesh 
               position={position}
               onPointerOver={() => setHovered(validator.city)}
@@ -170,7 +154,7 @@ function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
             >
               <sphereGeometry args={[size, 16, 16]} />
               <meshBasicMaterial 
-                color={isHovered ? "#ffffff" : "#00ffcc"}
+                color={isHovered ? "#ffffff" : "#00d9ff"}
               />
             </mesh>
             {/* Label on hover */}
@@ -178,7 +162,7 @@ function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
               <Html position={position} center style={{ pointerEvents: 'none' }}>
                 <div className="bg-card/95 backdrop-blur-sm border border-primary/50 rounded-lg px-3 py-2 shadow-lg whitespace-nowrap">
                   <p className="text-sm font-semibold text-foreground">{validator.city}</p>
-                  <p className="text-xs text-primary font-bold">{validator.count} validator{validator.count > 1 ? 's' : ''}</p>
+                  <p className="text-xs text-primary">{validator.count} validator{validator.count > 1 ? 's' : ''}</p>
                   <p className="text-xs text-muted-foreground">{validator.country}</p>
                 </div>
               </Html>
