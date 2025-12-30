@@ -345,7 +345,7 @@ export default function IndexPage() {
         {/* Header */}
         <div className="space-y-2">
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 w-32">
               <Link 
                 to="/globe" 
                 className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 border border-primary/30 transition-colors"
@@ -361,7 +361,9 @@ export default function IndexPage() {
               </h1>
               <Sparkles className="w-6 h-6 text-primary" />
             </div>
-            <ThemeToggle />
+            <div className="w-32 flex justify-end">
+              <ThemeToggle />
+            </div>
           </div>
           <p className="text-muted-foreground text-center">Explore your Aptos adventure through wallet analytics and insights</p>
           <div className="text-center">
