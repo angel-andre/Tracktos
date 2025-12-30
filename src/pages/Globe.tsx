@@ -30,45 +30,57 @@ export default function GlobePage() {
       
       {/* Header */}
       <header className="relative z-10 border-b border-border/50 backdrop-blur-xl bg-background/80">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link to="/">
-              <Button variant="ghost" size="icon" className="rounded-full">
-                <ArrowLeft className="w-5 h-5" />
-              </Button>
-            </Link>
+        <div className="max-w-7xl mx-auto px-4 py-3">
+          {/* Top row - Logo and controls */}
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
-              <img src={aptosLogo} alt="Aptos" className="w-8 h-8" />
-              <div>
-                <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-                  <GlobeIcon className="w-5 h-5 text-primary" />
-                  Aptos Network Globe
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  {networkStats.totalValidators} validators across {networkStats.countries} countries
-                </p>
+              <Link to="/">
+                <Button variant="ghost" size="icon" className="rounded-full h-8 w-8">
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
+              </Link>
+              <img src={aptosLogo} alt="Aptos" className="w-7 h-7" />
+              <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <GlobeIcon className="w-4 h-4 text-primary" />
+                Aptos Network Globe
+              </h1>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                <span className="text-xs text-muted-foreground">
+                  {isConnected ? 'Live' : 'Connecting...'}
+                </span>
               </div>
+              <ThemeToggle />
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <Server className="w-4 h-4 text-primary" />
-                <span className="text-muted-foreground">{networkStats.totalValidators} Validators</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Zap className="w-4 h-4 text-primary" />
-                <span className="text-muted-foreground">{Math.round(networkStats.tps)} TPS</span>
-              </div>
+          {/* Stats bar - single source of truth */}
+          <div className="flex items-center gap-4 overflow-x-auto pb-1">
+            <div className="flex items-center gap-1.5 text-sm whitespace-nowrap">
+              <Server className="w-3.5 h-3.5 text-primary" />
+              <span className="font-medium text-foreground">{networkStats.totalValidators}</span>
+              <span className="text-muted-foreground text-xs">Validators</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
-              <span className="text-sm text-muted-foreground">
-                {isConnected ? 'Live' : 'Connecting...'}
-              </span>
+            <div className="w-px h-4 bg-border/50" />
+            <div className="flex items-center gap-1.5 text-sm whitespace-nowrap">
+              <Zap className="w-3.5 h-3.5 text-primary" />
+              <span className="font-medium text-foreground">{Math.round(txStats.tps)}</span>
+              <span className="text-muted-foreground text-xs">TPS</span>
             </div>
-            <ThemeToggle />
+            <div className="w-px h-4 bg-border/50" />
+            <div className="flex items-center gap-1.5 text-sm whitespace-nowrap">
+              <GlobeIcon className="w-3.5 h-3.5 text-primary" />
+              <span className="font-medium text-foreground">{networkStats.countries}</span>
+              <span className="text-muted-foreground text-xs">Countries</span>
+            </div>
+            <div className="w-px h-4 bg-border/50" />
+            <div className="flex items-center gap-1.5 text-sm whitespace-nowrap">
+              <span className="font-medium text-foreground">{networkStats.cities}</span>
+              <span className="text-muted-foreground text-xs">Cities</span>
+            </div>
           </div>
         </div>
       </header>
@@ -173,20 +185,6 @@ export default function GlobePage() {
             )}
           </div>
 
-          {/* Mobile stats bar */}
-          <div className="lg:hidden absolute top-4 left-4 right-4 flex gap-2 overflow-x-auto pb-2">
-            <Badge variant="secondary" className="whitespace-nowrap">
-              <Server className="w-3 h-3 mr-1" />
-              {networkStats.totalValidators} Validators
-            </Badge>
-            <Badge variant="secondary" className="whitespace-nowrap">
-              <Zap className="w-3 h-3 mr-1" />
-              {Math.round(networkStats.tps)} TPS
-            </Badge>
-            <Badge variant="secondary" className="whitespace-nowrap">
-              {networkStats.countries} Countries
-            </Badge>
-          </div>
         </div>
 
         {/* Right Panel - Transactions */}
