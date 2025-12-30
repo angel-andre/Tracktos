@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from "react";
 import { useFrame, useLoader } from "@react-three/fiber";
 import * as THREE from "three";
-import { Sphere, Line, Html } from "@react-three/drei";
+import { Sphere, Html } from "@react-three/drei";
 import { TextureLoader } from "three";
 import type { Transaction } from "@/hooks/useRealtimeTransactions";
 import type { ValidatorNode } from "@/hooks/useValidatorNodes";
@@ -24,130 +24,101 @@ function latLngToVector3(lat: number, lng: number, radius: number = 1): THREE.Ve
   return new THREE.Vector3(x, y, z);
 }
 
-// Generate arc points between two coordinates
-function generateArcPoints(start: THREE.Vector3, end: THREE.Vector3, segments: number = 50): THREE.Vector3[] {
-  const points: THREE.Vector3[] = [];
-  const midPoint = start.clone().add(end).multiplyScalar(0.5);
-  const distance = start.distanceTo(end);
-  midPoint.normalize().multiplyScalar(1 + distance * 0.3);
-  
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
-    const point = new THREE.Vector3();
-    
-    point.x = (1 - t) * (1 - t) * start.x + 2 * (1 - t) * t * midPoint.x + t * t * end.x;
-    point.y = (1 - t) * (1 - t) * start.y + 2 * (1 - t) * t * midPoint.y + t * t * end.y;
-    point.z = (1 - t) * (1 - t) * start.z + 2 * (1 - t) * t * midPoint.z + t * t * end.z;
-    
-    points.push(point);
-  }
-  
-  return points;
-}
-
-interface TransactionArc {
+// Transaction pulse effects on validator nodes
+interface TransactionPulse {
   id: string;
-  points: THREE.Vector3[];
+  validatorIndex: number;
   progress: number;
   color: THREE.Color;
-  startPoint: THREE.Vector3;
-  endPoint: THREE.Vector3;
-  transaction: Transaction;
+  type: string;
 }
 
-function TransactionArcs({ transactions, onTransactionSelect }: { transactions: Transaction[], onTransactionSelect: (tx: Transaction | null) => void }) {
-  const arcsRef = useRef<TransactionArc[]>([]);
+function TransactionPulses({ 
+  transactions, 
+  validators 
+}: { 
+  transactions: Transaction[];
+  validators: ValidatorNode[];
+}) {
+  const pulsesRef = useRef<TransactionPulse[]>([]);
+  const lastTxRef = useRef<string>("");
   const [, forceUpdate] = useState(0);
-  
-  // Add new transactions without replacing existing ones
+
+  // Add new pulses when new transactions arrive
   useEffect(() => {
-    const existingIds = new Set(arcsRef.current.map(a => a.id));
+    if (transactions.length === 0 || validators.length === 0) return;
     
-    const newArcs = transactions.slice(0, 20)
-      .filter(tx => !existingIds.has(tx.hash))
-      .map((tx) => {
-        const start = latLngToVector3(tx.fromLat, tx.fromLng, 1.01);
-        const end = latLngToVector3(tx.toLat, tx.toLng, 1.01);
-        const points = generateArcPoints(start, end);
-        
-        let color = new THREE.Color("#00d9ff");
-        if (tx.type === "Transfer") color = new THREE.Color("#00ff88");
-        if (tx.type === "Swap") color = new THREE.Color("#ff6b00");
-        if (tx.type === "Stake") color = new THREE.Color("#bf00ff");
-        if (tx.type === "NFT") color = new THREE.Color("#ffcc00");
-        
-        return {
-          id: tx.hash,
-          points,
-          progress: 0,
-          color,
-          startPoint: start,
-          endPoint: end,
-          transaction: tx,
-        };
-      });
+    const latestTx = transactions[0];
+    if (latestTx.hash === lastTxRef.current) return;
+    lastTxRef.current = latestTx.hash;
+
+    // Create pulse at a random validator node
+    const validatorIndex = Math.floor(Math.random() * validators.length);
     
-    if (newArcs.length > 0) {
-      arcsRef.current = [...arcsRef.current, ...newArcs].slice(-25); // Keep max 25 arcs
-    }
-  }, [transactions]);
-  
+    let color = new THREE.Color("#00d9ff");
+    if (latestTx.type === "Transfer") color = new THREE.Color("#00ff88");
+    if (latestTx.type === "Swap") color = new THREE.Color("#ff6b00");
+    if (latestTx.type === "Stake") color = new THREE.Color("#bf00ff");
+    if (latestTx.type === "NFT") color = new THREE.Color("#ffcc00");
+    if (latestTx.type === "Contract") color = new THREE.Color("#00aaff");
+
+    pulsesRef.current = [
+      {
+        id: latestTx.hash,
+        validatorIndex,
+        progress: 0,
+        color,
+        type: latestTx.type,
+      },
+      ...pulsesRef.current.slice(0, 20), // Keep max 20 pulses
+    ];
+  }, [transactions, validators]);
+
   useFrame((_, delta) => {
     let needsUpdate = false;
     
-    arcsRef.current = arcsRef.current
-      .map((arc) => {
-        const newProgress = Math.min(arc.progress + delta * 0.25, 1.5); // Slower, extends past 1 for fade
-        if (newProgress !== arc.progress) needsUpdate = true;
-        return { ...arc, progress: newProgress };
+    pulsesRef.current = pulsesRef.current
+      .map((pulse) => {
+        const newProgress = pulse.progress + delta * 0.8;
+        if (newProgress !== pulse.progress) needsUpdate = true;
+        return { ...pulse, progress: newProgress };
       })
-      .filter((arc) => arc.progress < 1.5); // Remove only after full fade
+      .filter((pulse) => pulse.progress < 2);
     
     if (needsUpdate) forceUpdate(n => n + 1);
   });
 
   return (
     <group>
-      {arcsRef.current.map((arc) => {
-        // Draw progress (0-1 draws the line, 1-1.5 fades out)
-        const drawProgress = Math.min(arc.progress, 1);
-        const fadeProgress = arc.progress > 1 ? (arc.progress - 1) * 2 : 0; // 0-1 fade after draw complete
-        const opacity = Math.max(0, 1 - fadeProgress);
+      {pulsesRef.current.map((pulse) => {
+        const validator = validators[pulse.validatorIndex];
+        if (!validator) return null;
         
-        const visiblePoints = Math.floor(arc.points.length * drawProgress);
-        const displayPoints = arc.points.slice(0, Math.max(visiblePoints, 2));
-        
-        // Traveling dot position
-        const dotIndex = Math.min(visiblePoints, arc.points.length - 1);
-        const dotPosition = arc.points[dotIndex] || arc.startPoint;
+        const position = latLngToVector3(validator.lat, validator.lng, 1.02);
+        const opacity = Math.max(0, 1 - pulse.progress * 0.5);
+        const scale = 1 + pulse.progress * 2;
         
         return (
-          <group key={arc.id}>
-            {/* Main arc line */}
-            <Line
-              points={displayPoints}
-              color={arc.color}
-              lineWidth={2}
-              transparent
-              opacity={opacity * 0.8}
-            />
-            {/* Traveling dot along the arc */}
-            {drawProgress < 1 && (
-              <mesh position={dotPosition}>
-                <sphereGeometry args={[0.008, 8, 8]} />
-                <meshBasicMaterial color="#ffffff" transparent opacity={0.9} />
-              </mesh>
-            )}
-            {/* Start point glow */}
-            <mesh position={arc.startPoint}>
-              <sphereGeometry args={[0.006, 8, 8]} />
-              <meshBasicMaterial color={arc.color} transparent opacity={opacity * 0.6} />
+          <group key={pulse.id}>
+            {/* Expanding ring pulse */}
+            <mesh position={position} rotation={[Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[0.015 * scale, 0.02 * scale, 24]} />
+              <meshBasicMaterial
+                color={pulse.color}
+                transparent
+                opacity={opacity * 0.6}
+                side={THREE.DoubleSide}
+              />
             </mesh>
-            {/* End point pulse on arrival */}
-            {drawProgress >= 0.95 && (
-              <mesh position={arc.endPoint}>
-                <sphereGeometry args={[0.008 + fadeProgress * 0.02, 8, 8]} />
-                <meshBasicMaterial color={arc.color} transparent opacity={opacity * 0.8} />
+            {/* Center flash */}
+            {pulse.progress < 0.5 && (
+              <mesh position={position}>
+                <sphereGeometry args={[0.012, 12, 12]} />
+                <meshBasicMaterial
+                  color={pulse.color}
+                  transparent
+                  opacity={(0.5 - pulse.progress) * 2}
+                />
               </mesh>
             )}
           </group>
@@ -169,13 +140,10 @@ function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
         const position = latLngToVector3(validator.lat, validator.lng, 1.02);
         const isHovered = hovered === validator.city;
 
-        // Increase minimum visibility so single-validator locations (e.g. São Paulo / Buenos Aires)
-        // are still noticeable at globe zoomed-out views.
         const baseSize = 0.011;
         const scaleFactor = validator.count / maxCount;
-        const size = baseSize + scaleFactor * 0.013; // ~0.011 -> ~0.024
+        const size = baseSize + scaleFactor * 0.013;
 
-        // Higher minimum opacity for low-count nodes
         const intensity = 0.6 + scaleFactor * 0.4;
 
         const dotColor = isHovered
@@ -186,7 +154,7 @@ function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
 
         return (
           <group key={validator.city}>
-            {/* Single clean marker dot */}
+            {/* Validator node dot */}
             <mesh
               position={position}
               onPointerOver={() => setHovered(validator.city)}
@@ -200,7 +168,7 @@ function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
               />
             </mesh>
 
-            {/* Always show a subtle halo ring for low-count nodes (helps visibility on the globe) */}
+            {/* Halo ring */}
             {validator.count <= 2 && (
               <mesh position={position} rotation={[Math.PI / 2, 0, 0]}>
                 <ringGeometry args={[size * 1.6, size * 2.4, 28]} />
@@ -213,7 +181,6 @@ function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
               </mesh>
             )}
 
-            {/* Slightly stronger indicator ring for larger nodes */}
             {validator.count > 2 && (
               <mesh position={position} rotation={[Math.PI / 2, 0, 0]}>
                 <ringGeometry args={[size * 1.5, size * 2, 24]} />
@@ -308,10 +275,10 @@ export function GlobeScene({ transactions, validators, onTransactionSelect }: Gl
       {/* Validator node markers */}
       <ValidatorMarkers validators={validators} />
       
-      {/* Transaction arcs */}
-      <TransactionArcs 
+      {/* Transaction pulse effects on validators */}
+      <TransactionPulses 
         transactions={transactions} 
-        onTransactionSelect={onTransactionSelect}
+        validators={validators}
       />
     </group>
   );

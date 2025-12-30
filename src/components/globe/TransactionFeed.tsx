@@ -1,7 +1,8 @@
 import { useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowRight, ExternalLink } from "lucide-react";
+import { ExternalLink, Check, X, Zap, ArrowRightLeft, Coins, Image, FileCode } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 import type { Transaction } from "@/hooks/useRealtimeTransactions";
 
 interface TransactionFeedProps {
@@ -9,6 +10,15 @@ interface TransactionFeedProps {
   selectedTransaction: Transaction | null;
   onSelect: (tx: Transaction | null) => void;
 }
+
+const typeIcons: Record<string, React.ReactNode> = {
+  Transfer: <ArrowRightLeft className="w-3 h-3" />,
+  Swap: <Zap className="w-3 h-3" />,
+  Stake: <Coins className="w-3 h-3" />,
+  NFT: <Image className="w-3 h-3" />,
+  Contract: <FileCode className="w-3 h-3" />,
+  Transaction: <FileCode className="w-3 h-3" />,
+};
 
 function getTypeColor(type: string): string {
   switch (type) {
@@ -20,20 +30,19 @@ function getTypeColor(type: string): string {
       return "bg-purple-500/20 text-purple-400 border-purple-500/30";
     case "NFT":
       return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+    case "Contract":
+      return "bg-blue-500/20 text-blue-400 border-blue-500/30";
     default:
-      return "bg-primary/20 text-primary border-primary/30";
+      return "bg-cyan-500/20 text-cyan-400 border-cyan-500/30";
   }
 }
 
-function formatTime(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  return `${Math.floor(seconds / 3600)}h ago`;
+function truncateHash(hash: string): string {
+  return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
 }
 
-function truncateHash(hash: string): string {
-  return `${hash.slice(0, 6)}...${hash.slice(-4)}`;
+function truncateAddress(address: string): string {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
 export function TransactionFeed({ transactions, selectedTransaction, onSelect }: TransactionFeedProps) {
@@ -51,7 +60,8 @@ export function TransactionFeed({ transactions, selectedTransaction, onSelect }:
       <div ref={scrollRef} className="space-y-2 p-4">
         {transactions.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
-            <p className="text-sm">Waiting for transactions...</p>
+            <Zap className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">Loading live transactions...</p>
           </div>
         ) : (
           transactions.map((tx, index) => (
@@ -72,49 +82,61 @@ export function TransactionFeed({ transactions, selectedTransaction, onSelect }:
                 <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-primary rounded-full animate-pulse" />
               )}
               
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Badge variant="outline" className={`text-[10px] ${getTypeColor(tx.type)}`}>
-                      {tx.type}
-                    </Badge>
-                    <span className="text-[10px] text-muted-foreground">
-                      {formatTime(tx.timestamp)}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <span className="font-mono truncate max-w-[80px]">
-                      {truncateHash(tx.from)}
-                    </span>
-                    <ArrowRight className="w-3 h-3 text-primary flex-shrink-0" />
-                    <span className="font-mono truncate max-w-[80px]">
-                      {truncateHash(tx.to)}
-                    </span>
-                  </div>
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className={`text-[10px] px-2 py-0.5 ${getTypeColor(tx.type)}`}>
+                    {typeIcons[tx.type] || typeIcons.Transaction}
+                    <span className="ml-1">{tx.type}</span>
+                  </Badge>
                 </div>
-                
-                <div className="text-right flex-shrink-0">
-                  <p className="text-sm font-medium text-foreground">
-                    {tx.amount.toFixed(2)} APT
-                  </p>
+                <div className="flex items-center gap-1">
+                  {tx.success ? (
+                    <Check className="w-3 h-3 text-green-500" />
+                  ) : (
+                    <X className="w-3 h-3 text-red-500" />
+                  )}
+                  <span className="text-[10px] text-muted-foreground">
+                    v{tx.version}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
                   <a
                     href={`https://explorer.aptoslabs.com/txn/${tx.hash}?network=mainnet`}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    className="text-[10px] text-muted-foreground hover:text-primary inline-flex items-center gap-1"
+                    className="text-xs font-mono text-foreground hover:text-primary flex items-center gap-1"
                   >
-                    View <ExternalLink className="w-2 h-2" />
+                    {truncateHash(tx.hash)}
+                    <ExternalLink className="w-2 h-2" />
                   </a>
+                  {tx.amount > 0 && (
+                    <span className="text-xs font-medium text-primary">
+                      {tx.amount.toFixed(4)} APT
+                    </span>
+                  )}
                 </div>
-              </div>
-              
-              {/* Location info */}
-              <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
-                <span>{tx.fromCity}</span>
-                <ArrowRight className="w-2 h-2" />
-                <span>{tx.toCity}</span>
+                
+                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span className="truncate max-w-[150px]">
+                    From: {truncateAddress(tx.sender)}
+                  </span>
+                  <span>
+                    {formatDistanceToNow(new Date(tx.timestamp), { addSuffix: true })}
+                  </span>
+                </div>
+
+                {tx.gasCost > 0 && (
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground/70">
+                    <span>Gas: {tx.gasCost.toFixed(6)} APT</span>
+                    <span className="truncate max-w-[100px]">
+                      {tx.function !== 'unknown' ? tx.function.split('::').slice(-1)[0] : ''}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           ))
