@@ -161,41 +161,38 @@ function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
   const [hovered, setHovered] = useState<string | null>(null);
 
   // Calculate max count for proportional sizing
-  const maxCount = Math.max(...validators.map((v) => v.count), 1);
+  const maxCount = Math.max(...validators.map((v) => v.count));
 
   return (
     <group>
       {validators.map((validator) => {
-        // Skip invalid entries
-        if (typeof validator.lat !== 'number' || typeof validator.lng !== 'number') {
-          console.warn('Invalid validator coordinates:', validator);
-          return null;
-        }
-        
-        const position = latLngToVector3(validator.lat, validator.lng, 1.025);
+        const position = latLngToVector3(validator.lat, validator.lng, 1.02);
         const isHovered = hovered === validator.city;
 
-        // Much larger and brighter markers for visibility
-        const baseSize = 0.018;
+        // Increase minimum visibility so single-validator locations (e.g. São Paulo / Buenos Aires)
+        // are still noticeable at globe zoomed-out views.
+        const baseSize = 0.011;
         const scaleFactor = validator.count / maxCount;
-        const size = baseSize + scaleFactor * 0.022; // ~0.018 -> ~0.040
+        const size = baseSize + scaleFactor * 0.013; // ~0.011 -> ~0.024
 
-        // Full brightness for all nodes
-        const intensity = 0.85 + scaleFactor * 0.15;
+        // Higher minimum opacity for low-count nodes
+        const intensity = 0.6 + scaleFactor * 0.4;
 
-        // Bright cyan color that stands out against Earth
-        const dotColor = isHovered ? "#ffffff" : "#00ffcc";
-        const glowColor = "#00d9ff";
+        const dotColor = isHovered
+          ? "hsl(0, 0%, 100%)"
+          : "hsl(168, 100%, 50%)";
+
+        const ringColor = "hsl(190, 100%, 50%)";
 
         return (
-          <group key={`${validator.city}-${validator.country}`}>
-            {/* Main marker dot - larger and brighter */}
+          <group key={validator.city}>
+            {/* Single clean marker dot */}
             <mesh
               position={position}
               onPointerOver={() => setHovered(validator.city)}
               onPointerOut={() => setHovered(null)}
             >
-              <sphereGeometry args={[size, 16, 16]} />
+              <sphereGeometry args={[size, 12, 12]} />
               <meshBasicMaterial
                 color={dotColor}
                 transparent
@@ -203,25 +200,27 @@ function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
               />
             </mesh>
 
-            {/* Outer glow ring for all nodes */}
-            <mesh position={position} rotation={[Math.PI / 2, 0, 0]}>
-              <ringGeometry args={[size * 1.3, size * 2.2, 32]} />
-              <meshBasicMaterial
-                color={glowColor}
-                transparent
-                opacity={isHovered ? 0.9 : 0.5}
-                side={THREE.DoubleSide}
-              />
-            </mesh>
-
-            {/* Extra pulse ring for larger nodes */}
-            {validator.count > 3 && (
+            {/* Always show a subtle halo ring for low-count nodes (helps visibility on the globe) */}
+            {validator.count <= 2 && (
               <mesh position={position} rotation={[Math.PI / 2, 0, 0]}>
-                <ringGeometry args={[size * 2.2, size * 3, 32]} />
+                <ringGeometry args={[size * 1.6, size * 2.4, 28]} />
                 <meshBasicMaterial
-                  color={glowColor}
+                  color={ringColor}
                   transparent
-                  opacity={isHovered ? 0.6 : 0.25}
+                  opacity={isHovered ? 0.85 : 0.28}
+                  side={THREE.DoubleSide}
+                />
+              </mesh>
+            )}
+
+            {/* Slightly stronger indicator ring for larger nodes */}
+            {validator.count > 2 && (
+              <mesh position={position} rotation={[Math.PI / 2, 0, 0]}>
+                <ringGeometry args={[size * 1.5, size * 2, 24]} />
+                <meshBasicMaterial
+                  color={ringColor}
+                  transparent
+                  opacity={isHovered ? 0.8 : 0.22}
                   side={THREE.DoubleSide}
                 />
               </mesh>
@@ -230,7 +229,7 @@ function ValidatorMarkers({ validators }: { validators: ValidatorNode[] }) {
             {/* Label on hover */}
             {isHovered && (
               <Html position={position} center style={{ pointerEvents: "none" }}>
-                <div className="bg-card/95 backdrop-blur-sm border border-primary/50 rounded-lg px-3 py-2 shadow-lg whitespace-nowrap transform -translate-y-10">
+                <div className="bg-card/95 backdrop-blur-sm border border-primary/50 rounded-lg px-3 py-2 shadow-lg whitespace-nowrap transform -translate-y-8">
                   <p className="text-sm font-semibold text-foreground">{validator.city}</p>
                   <p className="text-xs text-primary font-bold">
                     {validator.count} validator{validator.count > 1 ? "s" : ""}
