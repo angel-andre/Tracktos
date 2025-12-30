@@ -92,10 +92,10 @@ export default function GlobePage() {
             {/* Transaction Type Distribution */}
             <TransactionTypeChart transactions={transactions} />
             
-            {/* Epoch Progress */}
+            {/* Epoch Progress - now using real ledger timestamp */}
             <EpochProgress 
-              epoch={parseInt(txStats.epoch) || networkStats.epoch} 
-              epochProgress={networkStats.epochProgress} 
+              epoch={parseInt(txStats.epoch) || 0} 
+              ledgerTimestamp={txStats.ledgerTimestamp}
             />
           </div>
           

@@ -40,6 +40,7 @@ interface TransactionStats {
   latestVersion: string;
   blockHeight: string;
   epoch: string;
+  ledgerTimestamp: string; // Add ledger timestamp for epoch progress calculation
   topTypes: { type: string; count: number }[];
 }
 
@@ -51,21 +52,42 @@ export function useRealtimeTransactions() {
     latestVersion: "0",
     blockHeight: "0",
     epoch: "0",
+    ledgerTimestamp: "0",
     topTypes: [],
   });
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const tpsWindowRef = useRef<number[]>([]);
   const lastVersionRef = useRef<string>("0");
+  
+  // Track ledger versions over time to calculate accurate TPS
+  const tpsHistoryRef = useRef<{ version: number; time: number }[]>([]);
 
-  // Calculate TPS from recent fetch times
-  const updateTPS = useCallback((newTxCount: number) => {
+  // Calculate REAL TPS from ledger version changes
+  const updateTPS = useCallback((currentVersion: string) => {
     const now = Date.now();
-    tpsWindowRef.current.push(...Array(newTxCount).fill(now));
-    // Keep only last 10 seconds
-    tpsWindowRef.current = tpsWindowRef.current.filter(t => now - t < 10000);
-    const tps = tpsWindowRef.current.length / 10;
-    setStats(prev => ({ ...prev, tps: Math.round(tps * 10) / 10 }));
+    const version = parseInt(currentVersion);
+    
+    if (isNaN(version)) return;
+    
+    tpsHistoryRef.current.push({ version, time: now });
+    
+    // Keep only last 15 seconds of data
+    tpsHistoryRef.current = tpsHistoryRef.current.filter(
+      entry => now - entry.time < 15000
+    );
+    
+    // Calculate TPS from version delta over time
+    if (tpsHistoryRef.current.length >= 2) {
+      const oldest = tpsHistoryRef.current[0];
+      const newest = tpsHistoryRef.current[tpsHistoryRef.current.length - 1];
+      const versionDelta = newest.version - oldest.version;
+      const timeDelta = (newest.time - oldest.time) / 1000; // seconds
+      
+      if (timeDelta > 0) {
+        const realTPS = versionDelta / timeDelta;
+        setStats(prev => ({ ...prev, tps: Math.round(realTPS * 10) / 10 }));
+      }
+    }
   }, []);
 
   // Fetch real transactions from Aptos
@@ -107,8 +129,6 @@ export function useRealtimeTransactions() {
             ).slice(0, 100);
             return unique;
           });
-
-          updateTPS(newTransactions.length);
         }
 
         // Calculate type distribution
@@ -121,13 +141,17 @@ export function useRealtimeTransactions() {
           .sort((a, b) => b.count - a.count)
           .slice(0, 5);
 
-        // Update stats from ledger info
+        // Update stats from ledger info and calculate REAL TPS
         if (data.ledgerInfo) {
+          // Calculate TPS from ledger version changes (the real network throughput)
+          updateTPS(data.ledgerInfo.ledgerVersion);
+          
           setStats(prev => ({
             ...prev,
             latestVersion: data.ledgerInfo.ledgerVersion,
             blockHeight: data.ledgerInfo.blockHeight,
             epoch: data.ledgerInfo.epoch,
+            ledgerTimestamp: data.ledgerInfo.ledgerTimestamp,
             totalTransactions: parseInt(data.ledgerInfo.ledgerVersion),
             topTypes,
           }));
