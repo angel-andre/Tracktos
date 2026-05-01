@@ -2,7 +2,7 @@ import { Suspense, useState } from "react";
 import { Link } from "react-router-dom";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Stars } from "@react-three/drei";
-import { ArrowLeft, Activity, Globe as GlobeIcon, Zap, Server, ExternalLink, AlertCircle, BarChart3 } from "lucide-react";
+import { ArrowLeft, Activity, Globe as GlobeIcon, Zap, Server, ExternalLink, AlertCircle, BarChart3, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +53,12 @@ export default function GlobePage() {
                   {isConnected ? 'Live' : 'Connecting...'}
                 </span>
               </div>
+              <Link to="/pulse">
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-primary" />
+                  Pulse
+                </Button>
+              </Link>
               <ThemeToggle />
             </div>
           </div>
