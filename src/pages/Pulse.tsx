@@ -20,6 +20,8 @@ import {
 } from "@/hooks/useRealtimeTransactions";
 import { PulseCanvas } from "@/components/pulse/PulseCanvas";
 import type { Mode } from "@/components/pulse/positioning";
+import { useAudioEngine } from "@/components/pulse/useAudioEngine";
+import { AudioControls } from "@/components/pulse/AudioControls";
 import aptosLogo from "@/assets/aptos-logo.png";
 
 const LEGEND: { label: string; cssVar: string }[] = [
@@ -44,6 +46,7 @@ export default function PulsePage() {
   const [density, setDensity] = useState(250);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const snapshotRef = useRef<() => void>(() => {});
+  const audio = useAudioEngine({ transactions, tps: stats.tps });
 
   const recent = transactions.slice(0, 5);
 
@@ -216,6 +219,15 @@ export default function PulsePage() {
             />
             <span className="text-xs font-mono w-8 text-right">{density}</span>
           </div>
+          <div className="w-px h-5 bg-border/60" />
+          <AudioControls
+            muted={audio.muted}
+            volume={audio.volume}
+            voice={audio.voice}
+            onToggleMute={() => audio.setMuted(!audio.muted)}
+            onVolumeChange={audio.setVolume}
+            onVoiceChange={audio.setVoice}
+          />
         </div>
 
         {/* Selected detail */}
