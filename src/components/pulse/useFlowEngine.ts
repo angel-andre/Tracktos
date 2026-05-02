@@ -184,7 +184,18 @@ export function useFlowEngine({
       const op = anchorPosition(oKey, modeRef.current, w, h);
       const dp = anchorPosition(dKey, modeRef.current, w, h);
       const origin = anchorsRef.current.get(oKey, op.x, op.y);
-      const dest = anchorsRef.current.get(dKey, dp.x, dp.y);
+      let dest = anchorsRef.current.get(dKey, dp.x, dp.y);
+      // In Orbit mode, route every satellite to one of the current
+      // hot-anchor planets so they actually orbit something visible.
+      if (modeRef.current === "orbit") {
+        const planets = anchorsRef.current.topByHeat(6);
+        if (planets.length > 0) {
+          // Stable assignment per tx → one planet, so the same wallet
+          // tends to orbit the same center across visits.
+          const idx = Math.floor(hash32(dKey, 11) * planets.length);
+          dest = planets[idx];
+        }
+      }
       anchorsRef.current.hit(origin);
       anchorsRef.current.hit(dest);
       flowsRef.current.push(createFlow(tx, origin, dest, dur));
