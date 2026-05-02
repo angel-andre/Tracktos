@@ -476,10 +476,11 @@ function drawRipple(
   const ringAlpha = alpha * (1 - travelT) * 0.7;
   if (ringAlpha <= 0.01) return;
   ctx.strokeStyle = cssVarHsl(f.colorVar, ringAlpha);
-  ctx.lineWidth = 1 + f.weight * 1.5;
-  ctx.beginPath();
-  ctx.arc(f.origin.x, f.origin.y, radius, 0, Math.PI * 2);
-  ctx.stroke();
+  ctx.lineWidth = 1 + f.weight * 1.5 + (f.whale ? 1 : 0);
+  if (!f.success) ctx.setLineDash([5, 4]);
+  // Per-archetype ring shape — each tx type has a distinct silhouette.
+  drawShapedRing(ctx, f.origin.x, f.origin.y, radius, f.arch);
+  ctx.setLineDash([]);
   // Origin glow
   if (travelT < 0.35) {
     const g = ctx.createRadialGradient(f.origin.x, f.origin.y, 0, f.origin.x, f.origin.y, 24);
@@ -501,6 +502,43 @@ function drawRipple(
     ctx.arc(f.dest.x, f.dest.y, 30, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+// Draw a closed polygon ring centered on (cx, cy) with the given "radius"
+// (vertex distance). Each archetype gets a distinct silhouette so a viewer
+// can read transaction type at a glance, even from a still frame.
+function drawShapedRing(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  radius: number,
+  arch: Archetype,
+) {
+  let sides: number;
+  let rotation = 0;
+  switch (arch) {
+    case "transfer": sides = 0; break; // circle
+    case "swap":     sides = 4; rotation = Math.PI / 4; break; // diamond
+    case "stake":    sides = 6; break; // hexagon
+    case "nft":      sides = 8; break; // octagon
+    case "contract": sides = 3; rotation = -Math.PI / 2; break; // triangle
+    default:         sides = 0; break;
+  }
+  if (sides === 0) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    return;
+  }
+  ctx.beginPath();
+  for (let i = 0; i <= sides; i++) {
+    const a = rotation + (i / sides) * Math.PI * 2;
+    const x = cx + Math.cos(a) * radius;
+    const y = cy + Math.sin(a) * radius;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
 }
 
 function drawRainStreak(
