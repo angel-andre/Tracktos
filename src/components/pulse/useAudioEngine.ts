@@ -48,11 +48,12 @@ export function useAudioEngine({ transactions, tps, mode }: Options) {
     engineRef.current.setVolume(volume);
     engineRef.current.setVoice(effectiveVoice);
     engineRef.current.setScale(def.scale);
-    engineRef.current.setQuantize(mode === "grid" ? 60 / 110 / 4 : null); // 16th @ 110bpm
-    engineRef.current.setChordSize(mode === "mandala" ? 3 : 1);
+    engineRef.current.setQuantize(null);
+    engineRef.current.setChordSize(1);
+    engineRef.current.setPerTypeVoice(voicePref === "auto");
     engineRef.current.setMuted(muted);
     setReady(true);
-  }, [muted, volume, effectiveVoice, def.scale, mode]);
+  }, [muted, volume, effectiveVoice, def.scale, voicePref]);
 
   const setMuted = useCallback(
     async (m: boolean) => {
@@ -87,9 +88,10 @@ export function useAudioEngine({ transactions, tps, mode }: Options) {
     if (!eng) return;
     eng.setVoice(effectiveVoice);
     eng.setScale(def.scale);
-    eng.setQuantize(mode === "grid" ? 60 / 110 / 4 : null);
-    eng.setChordSize(mode === "mandala" ? 3 : 1);
-  }, [mode, effectiveVoice, def.scale]);
+    eng.setQuantize(null);
+    eng.setChordSize(1);
+    eng.setPerTypeVoice(voicePref === "auto");
+  }, [mode, effectiveVoice, def.scale, voicePref]);
 
   // Watch transactions
   useEffect(() => {
@@ -110,6 +112,7 @@ export function useAudioEngine({ transactions, tps, mode }: Options) {
 
   useEffect(() => {
     engineRef.current?.setAmbientLevel(tps);
+    engineRef.current?.setTps(tps);
   }, [tps]);
 
   useEffect(() => {
