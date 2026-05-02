@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Sparkles, Plus, RefreshCw, Globe, Music2 } from "lucide-react";
+import { Loader2, Activity, Plus, RefreshCw, Globe, Music2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -366,7 +366,7 @@ export default function IndexPage() {
               <h1 className="text-4xl font-bold text-foreground">
                 Tracktos
               </h1>
-              <Sparkles className="w-6 h-6 text-primary" />
+              <Activity className="w-6 h-6 text-primary" />
             </div>
             <div className="w-32 flex justify-end">
               <ThemeToggle />
