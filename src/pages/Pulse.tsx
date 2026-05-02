@@ -168,6 +168,24 @@ export default function PulsePage() {
             <div className="pt-2 mt-2 border-t border-border/40 text-[10px] text-muted-foreground leading-relaxed">
               {activeMode.description}
             </div>
+            <div className="pt-2 mt-2 border-t border-border/40 space-y-1 font-mono text-[10px]">
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">LEDGER</span>
+                <span className="text-foreground">
+                  {Number(stats.latestVersion).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">BLOCK</span>
+                <span className="text-foreground">
+                  {Number(stats.blockHeight).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">TPS</span>
+                <span className="text-primary">{stats.tps.toFixed(1)}</span>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
