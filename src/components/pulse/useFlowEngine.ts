@@ -10,6 +10,7 @@ import {
   drawFlow,
   drawAnchor,
   drawBackground,
+  drawPlanetCenter,
   cssVarHsl,
   hash32,
 } from "./flows";
@@ -83,6 +84,10 @@ export function useFlowEngine({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
   const mousePosRef = useRef<{ x: number; y: number } | null>(null);
+  const hoveredIdRef = useRef<string | null>(null);
+  const hoverInfoRef = useRef<HoverInfo | null>(null);
+  // Throttle React state updates from the high-frequency render loop.
+  const lastHoverPushRef = useRef<number>(0);
 
   modeRef.current = mode;
   maxRef.current = maxFlows;
@@ -179,7 +184,18 @@ export function useFlowEngine({
       const op = anchorPosition(oKey, modeRef.current, w, h);
       const dp = anchorPosition(dKey, modeRef.current, w, h);
       const origin = anchorsRef.current.get(oKey, op.x, op.y);
-      const dest = anchorsRef.current.get(dKey, dp.x, dp.y);
+      let dest = anchorsRef.current.get(dKey, dp.x, dp.y);
+      // In Orbit mode, route every satellite to one of the current
+      // hot-anchor planets so they actually orbit something visible.
+      if (modeRef.current === "orbit") {
+        const planets = anchorsRef.current.topByHeat(6);
+        if (planets.length > 0) {
+          // Stable assignment per tx → one planet, so the same wallet
+          // tends to orbit the same center across visits.
+          const idx = Math.floor(hash32(dKey, 11) * planets.length);
+          dest = planets[idx];
+        }
+      }
       anchorsRef.current.hit(origin);
       anchorsRef.current.hit(dest);
       flowsRef.current.push(createFlow(tx, origin, dest, dur));
@@ -241,7 +257,18 @@ export function useFlowEngine({
       }
 
       // Draw anchors (under flows)
-      if (m !== "rain") {
+      if (m === "orbit") {
+        // Hot anchors are gravitational centers — render them as planets
+        // first, then quieter sub-anchors as small dots underneath.
+        const planets = anchorsRef.current.topByHeat(8);
+        const planetSet = new Set(planets.map((p) => p.key));
+        for (const a of anchorsRef.current.values()) {
+          if (!planetSet.has(a.key)) drawAnchor(a, ctx, m);
+        }
+        for (let i = 0; i < planets.length; i++) {
+          drawPlanetCenter(planets[i], ctx, i, timeRef.current);
+        }
+      } else if (m !== "rain") {
         for (const a of anchorsRef.current.values()) {
           drawAnchor(a, ctx, m);
         }
@@ -249,17 +276,22 @@ export function useFlowEngine({
 
       // Constellation: faint persistent links between hot anchor pairs
       if (m === "constellation") {
-        const hot = anchorsRef.current.topByHeat(14);
-        ctx.strokeStyle = cssVarHsl("--foreground", 0.05);
+        // Persistent links between the hottest anchors. Brightness
+        // scales with combined heat so the network structure becomes
+        // visible without overpowering the comet trails.
+        const hot = anchorsRef.current.topByHeat(18);
         ctx.lineWidth = 1;
-        ctx.beginPath();
         for (let i = 0; i < hot.length; i++) {
-          for (let j = i + 1; j < Math.min(hot.length, i + 3); j++) {
+          for (let j = i + 1; j < Math.min(hot.length, i + 4); j++) {
+            const heat = (hot[i].heat + hot[j].heat) * 0.5;
+            const a = 0.06 + heat * 0.18;
+            ctx.strokeStyle = cssVarHsl("--primary", a);
+            ctx.beginPath();
             ctx.moveTo(hot[i].x, hot[i].y);
             ctx.lineTo(hot[j].x, hot[j].y);
+            ctx.stroke();
           }
         }
-        ctx.stroke();
       }
 
       // Tick + draw flows
@@ -321,28 +353,34 @@ export function useFlowEngine({
           }
         }
       }
-      if (next !== hoveredId) setHoveredId(next);
-      // Update hover info (compare by tx hash to avoid re-render churn).
-      setHoverInfo((prev) => {
-        if (!nextInfo && !prev) return prev;
-        if (!nextInfo) return null;
-        if (
-          prev &&
-          prev.tx.hash === nextInfo.tx.hash &&
-          Math.abs(prev.x - nextInfo.x) < 1 &&
-          Math.abs(prev.y - nextInfo.y) < 1
-        ) {
-          return prev;
-        }
-        return nextInfo;
-      });
+      // Hover state lives in refs; we publish to React at most every ~50ms
+      // and only when the underlying tx hash changes or position drifts.
+      hoveredIdRef.current = next;
+      hoverInfoRef.current = nextInfo;
+      const nowMs = performance.now();
+      if (nowMs - lastHoverPushRef.current > 50) {
+        lastHoverPushRef.current = nowMs;
+        setHoveredId(next);
+        setHoverInfo((prev) => {
+          if (!nextInfo && !prev) return prev;
+          if (!nextInfo) return null;
+          if (
+            prev &&
+            prev.tx.hash === nextInfo.tx.hash &&
+            Math.abs(prev.x - nextInfo.x) < 2 &&
+            Math.abs(prev.y - nextInfo.y) < 2
+          ) {
+            return prev;
+          }
+          return nextInfo;
+        });
+      }
 
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getAnchorAt, hoveredId]);
+  }, [getAnchorAt]);
 
   const snapshot = useCallback(() => {
     const c = canvasRef.current;

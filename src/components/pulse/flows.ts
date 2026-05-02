@@ -1,14 +1,30 @@
 import type { Transaction } from "@/hooks/useRealtimeTransactions";
 import type { Mode } from "./modes";
 
-// Resolve an HSL CSS variable to "hsl(H S% L% / a)".
+// Resolve an HSL CSS variable to "hsl(H S% L% / a)" with caching.
+// `getComputedStyle` is expensive when called hundreds of times per frame;
+// the raw HSL triple rarely changes, so we cache it and invalidate on
+// theme switches (callers can call cssVarBust()).
+const _hslCache: Map<string, string> = new Map();
+export function cssVarBust() {
+  _hslCache.clear();
+}
+function rawHsl(varName: string): string {
+  const cached = _hslCache.get(varName);
+  if (cached !== undefined) return cached;
+  if (typeof window === "undefined") {
+    _hslCache.set(varName, "0 0% 50%");
+    return "0 0% 50%";
+  }
+  const raw =
+    getComputedStyle(document.documentElement)
+      .getPropertyValue(varName)
+      .trim() || "0 0% 50%";
+  _hslCache.set(varName, raw);
+  return raw;
+}
 export function cssVarHsl(varName: string, alpha = 1): string {
-  if (typeof window === "undefined") return `hsl(0 0% 50% / ${alpha})`;
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue(varName)
-    .trim();
-  if (!raw) return `hsl(0 0% 50% / ${alpha})`;
-  return `hsl(${raw} / ${alpha})`;
+  return `hsl(${rawHsl(varName)} / ${alpha})`;
 }
 
 export type Archetype =
@@ -169,6 +185,8 @@ export interface FlowState {
   fade: number; // tail fade time after arrival
   curveK: number; // bezier curvature factor (-1..1)
   weight: number; // 0..1 visual weight (amount-based)
+  success: boolean; // tx.success — failed txs render distinctly
+  whale: boolean; // unusually large amount → bigger / haloed
 }
 
 export function createFlow(
@@ -183,7 +201,7 @@ export function createFlow(
     id: tx.hash,
     tx,
     arch,
-    colorVar: colorVarFor(arch),
+    colorVar: tx.success === false ? "--destructive" : colorVarFor(arch),
     origin,
     dest,
     age: 0,
@@ -191,6 +209,8 @@ export function createFlow(
     fade: 0.7,
     curveK: (hash32(tx.hash, 31) - 0.5) * 1.6,
     weight: w,
+    success: tx.success !== false,
+    whale: !!tx.whale || tx.amount >= 1000,
   };
 }
 
@@ -268,7 +288,10 @@ function drawArc(
   const trail = 0.28; // fraction of path visible behind head
   const uStart = Math.max(0, u - trail);
   ctx.lineCap = "round";
-  ctx.lineWidth = 1 + f.weight * 1.4;
+  ctx.lineWidth = 1 + f.weight * 1.4 + (f.whale ? 1.4 : 0);
+  // Failed transactions render with a short dashed stroke instead of solid.
+  if (!f.success) ctx.setLineDash([4, 3]);
+  else ctx.setLineDash([]);
   // Tapered trail with gradient by sampling
   for (let i = 0; i < segments; i++) {
     const t0 = uStart + (i / segments) * (u - uStart);
@@ -276,16 +299,17 @@ function drawArc(
     if (t1 <= t0) continue;
     const p0 = bezierPoint(f, t0);
     const p1 = bezierPoint(f, t1);
-    const segAlpha = alpha * (i / segments) * 0.85;
+    const segAlpha = alpha * (i / segments) * (f.success ? 0.85 : 0.5);
     ctx.strokeStyle = cssVarHsl(f.colorVar, segAlpha);
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);
     ctx.lineTo(p1.x, p1.y);
     ctx.stroke();
   }
+  ctx.setLineDash([]);
   // Comet head
   const head = bezierPoint(f, u);
-  const headR = 2.2 + f.weight * 3;
+  const headR = 2.2 + f.weight * 3 + (f.whale ? 2 : 0);
   const grad = ctx.createRadialGradient(head.x, head.y, 0, head.x, head.y, headR * 4);
   grad.addColorStop(0, cssVarHsl(f.colorVar, 0.9 * alpha));
   grad.addColorStop(0.4, cssVarHsl(f.colorVar, 0.25 * alpha));
@@ -298,6 +322,14 @@ function drawArc(
   ctx.beginPath();
   ctx.arc(head.x, head.y, headR, 0, Math.PI * 2);
   ctx.fill();
+  // Whale halo ring at the head — unmistakable for big movements.
+  if (f.whale) {
+    ctx.strokeStyle = cssVarHsl(f.colorVar, 0.6 * alpha);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, headR * 2.6, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
   // Garden: sprout a tiny bloom at destination on arrival
   if (arrived && dctx.mode === "garden") {
@@ -444,10 +476,11 @@ function drawRipple(
   const ringAlpha = alpha * (1 - travelT) * 0.7;
   if (ringAlpha <= 0.01) return;
   ctx.strokeStyle = cssVarHsl(f.colorVar, ringAlpha);
-  ctx.lineWidth = 1 + f.weight * 1.5;
-  ctx.beginPath();
-  ctx.arc(f.origin.x, f.origin.y, radius, 0, Math.PI * 2);
-  ctx.stroke();
+  ctx.lineWidth = 1 + f.weight * 1.5 + (f.whale ? 1 : 0);
+  if (!f.success) ctx.setLineDash([5, 4]);
+  // Per-archetype ring shape — each tx type has a distinct silhouette.
+  drawShapedRing(ctx, f.origin.x, f.origin.y, radius, f.arch);
+  ctx.setLineDash([]);
   // Origin glow
   if (travelT < 0.35) {
     const g = ctx.createRadialGradient(f.origin.x, f.origin.y, 0, f.origin.x, f.origin.y, 24);
@@ -469,6 +502,43 @@ function drawRipple(
     ctx.arc(f.dest.x, f.dest.y, 30, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+// Draw a closed polygon ring centered on (cx, cy) with the given "radius"
+// (vertex distance). Each archetype gets a distinct silhouette so a viewer
+// can read transaction type at a glance, even from a still frame.
+function drawShapedRing(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  radius: number,
+  arch: Archetype,
+) {
+  let sides: number;
+  let rotation = 0;
+  switch (arch) {
+    case "transfer": sides = 0; break; // circle
+    case "swap":     sides = 4; rotation = Math.PI / 4; break; // diamond
+    case "stake":    sides = 6; break; // hexagon
+    case "nft":      sides = 8; break; // octagon
+    case "contract": sides = 3; rotation = -Math.PI / 2; break; // triangle
+    default:         sides = 0; break;
+  }
+  if (sides === 0) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    return;
+  }
+  ctx.beginPath();
+  for (let i = 0; i <= sides; i++) {
+    const a = rotation + (i / sides) * Math.PI * 2;
+    const x = cx + Math.cos(a) * radius;
+    const y = cy + Math.sin(a) * radius;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
 }
 
 function drawRainStreak(
@@ -521,7 +591,7 @@ export function drawBackground(
   w: number,
   h: number,
   _tps: number,
-  _time: number,
+  time: number,
 ) {
   // Trail wash — slightly stronger so old strokes clear
   ctx.fillStyle = cssVarHsl("--background", 0.32);
@@ -529,10 +599,50 @@ export function drawBackground(
 
   // Faint dot grid
   const spacing = 48;
-  ctx.fillStyle = cssVarHsl("--foreground", 0.04);
+  // Very low-frequency idle shimmer on the grid so the canvas reads
+  // "alive, listening" before the first burst lands. This is purely a
+  // background hint — capped well below visual noise threshold.
+  const shimmer = 0.03 + 0.012 * (0.5 + 0.5 * Math.sin(time * 0.4));
+  ctx.fillStyle = cssVarHsl("--foreground", shimmer);
   for (let x = spacing / 2; x < w; x += spacing) {
     for (let y = spacing / 2; y < h; y += spacing) {
       ctx.fillRect(x, y, 1, 1);
     }
   }
+}
+
+// Render a "planet" — a halo ring + bright nucleus around a hot anchor.
+// Used in Orbit mode to make top-K addresses look like gravitational
+// centers around which their txs visibly orbit.
+export function drawPlanetCenter(
+  a: Anchor,
+  ctx: CanvasRenderingContext2D,
+  rank: number, // 0 = hottest
+  time: number,
+) {
+  const intensity = Math.max(0.25, 1 - rank * 0.12);
+  const baseR = 4 + intensity * 5;
+  const breathe = 0.85 + 0.15 * Math.sin(time * 1.2 + rank);
+  const r = baseR * breathe;
+  // Outer halo
+  const haloR = r * 5;
+  const grad = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, haloR);
+  grad.addColorStop(0, cssVarHsl("--primary", 0.22 * intensity));
+  grad.addColorStop(0.5, cssVarHsl("--primary", 0.06 * intensity));
+  grad.addColorStop(1, cssVarHsl("--primary", 0));
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(a.x, a.y, haloR, 0, Math.PI * 2);
+  ctx.fill();
+  // Faint outer ring
+  ctx.strokeStyle = cssVarHsl("--primary", 0.18 * intensity);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(a.x, a.y, r * 2.4, 0, Math.PI * 2);
+  ctx.stroke();
+  // Nucleus
+  ctx.fillStyle = cssVarHsl("--foreground", 0.7 * intensity);
+  ctx.beginPath();
+  ctx.arc(a.x, a.y, r, 0, Math.PI * 2);
+  ctx.fill();
 }
