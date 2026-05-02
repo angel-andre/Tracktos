@@ -1,6 +1,6 @@
 import type { Transaction } from "@/hooks/useRealtimeTransactions";
 
-export type Voice = "bloom" | "crystal" | "pulse";
+export type Voice = "bloom" | "crystal" | "pulse" | "warm" | "deep";
 
 export interface ScaleDef {
   root: number;
@@ -57,6 +57,9 @@ export class AudioEngine {
   private quantize: number | null = null; // grid duration in seconds, null = off
   private chordSize = 1;
   private padRoot = 38;
+  private tps = 0;
+  private recentNotes: { key: string; t: number }[] = [];
+  private perTypeVoice = true;
 
   isReady() {
     return !!this.ctx;
@@ -181,6 +184,14 @@ export class AudioEngine {
     this.chordSize = Math.max(1, Math.min(4, n));
   }
 
+  setPerTypeVoice(on: boolean) {
+    this.perTypeVoice = on;
+  }
+
+  setTps(tps: number) {
+    this.tps = tps;
+  }
+
   setAmbientLevel(tps: number) {
     if (!this.ctx || !this.ambientGain || !this.ambientFilter) return;
     const t = this.ctx.currentTime;
@@ -238,26 +249,47 @@ export class AudioEngine {
     const duration = 0.6 + Math.min(2.4, Math.log10(1 + gas * 1e6) * 0.4);
     const wetSend = Math.min(0.8, 0.25 + gas * 5);
 
-    // Type → voice override (subtle)
+    // Per-type instrument when enabled (Auto), else honor the user's voice pick
     const typeVoice: Voice =
-      tx.type === "Stake"
+      tx.type === "Transfer"
         ? "bloom"
         : tx.type === "Swap"
-          ? "crystal"
-          : tx.type === "Transfer"
-            ? this.voice
+          ? "warm"
+          : tx.type === "Stake"
+            ? "deep"
             : tx.type === "NFT"
               ? "crystal"
-              : this.voice;
+              : tx.type === "Contract"
+                ? "pulse"
+                : "bloom";
+    const useVoice: Voice = this.perTypeVoice ? typeVoice : this.voice;
 
-    const useVoice = this.voice === "pulse" ? "pulse" : typeVoice;
+    // Dedupe identical pitch+type within 80ms
+    const dedupeKey = `${useVoice}:${note}`;
+    this.recentNotes = this.recentNotes.filter((n) => now - n.t < 0.08);
+    if (this.recentNotes.some((n) => n.key === dedupeKey)) return;
+    this.recentNotes.push({ key: dedupeKey, t: now });
+
+    // Polyphony cap → 6
+    if (this.active.length > 6) {
+      const drop = this.active.shift();
+      drop?.nodes.forEach((n) => {
+        try { (n as OscillatorNode).stop?.(); } catch { /* noop */ }
+      });
+    }
+
+    // High-TPS ducking
+    const duck = this.tps > 50 ? Math.max(0.4, 1 - (this.tps - 50) / 200) : 1;
+
+    // Stereo pan from sender hash
+    const pan = ((h % 1000) / 1000) * 2 - 1;
 
     const chord = this.chordSize;
     for (let c = 0; c < chord; c++) {
       const offsetIdx = (baseIdx + c * 2) % this.scaleNotes.length;
       const f = c === 0 ? freq : midiToFreq(this.scaleNotes[offsetIdx]);
-      const v = c === 0 ? velocity : velocity * 0.6;
-      const nodes = this.synth(useVoice, f, v, duration, wetSend, now);
+      const v = (c === 0 ? velocity : velocity * 0.6) * duck;
+      const nodes = this.synth(useVoice, f, v, duration, wetSend, now, pan);
       this.active.push({ nodes, endsAt: now + duration + 0.5 });
     }
   }
@@ -269,13 +301,22 @@ export class AudioEngine {
     duration: number,
     wetSend: number,
     when: number,
+    pan: number = 0,
   ): AudioNode[] {
     const ctx = this.ctx!;
     const dryOut = ctx.createGain();
     const wetOut = ctx.createGain();
     dryOut.gain.value = 1 - wetSend * 0.4;
     wetOut.gain.value = wetSend;
-    dryOut.connect(this.dry!);
+    // Stereo panner if available
+    let panner: StereoPannerNode | null = null;
+    if ("createStereoPanner" in ctx) {
+      panner = ctx.createStereoPanner();
+      panner.pan.value = Math.max(-1, Math.min(1, pan));
+      dryOut.connect(panner).connect(this.dry!);
+    } else {
+      dryOut.connect(this.dry!);
+    }
     wetOut.connect(this.wet!);
 
     const env = ctx.createGain();
@@ -327,8 +368,46 @@ export class AudioEngine {
       carrier.start(when);
       oscs.push(carrier, mod);
       attack = 0.005;
-      release = duration * 0.9;
+      release = Math.min(1.2, duration * 0.7);
       peak = velocity * 0.28;
+    } else if (voice === "warm") {
+      filter.frequency.value = 1800;
+      filter.Q.value = 0.5;
+      const o1 = ctx.createOscillator();
+      o1.type = "triangle";
+      o1.frequency.value = freq;
+      const o2 = ctx.createOscillator();
+      o2.type = "sawtooth";
+      o2.frequency.value = freq * 1.005; // slight detune
+      const o2g = ctx.createGain();
+      o2g.gain.value = 0.18;
+      o1.connect(filter);
+      o2.connect(o2g).connect(filter);
+      o1.start(when);
+      o2.start(when);
+      oscs.push(o1, o2);
+      attack = 0.06;
+      release = Math.min(1.8, duration * 0.85);
+      peak = velocity * 0.3;
+    } else if (voice === "deep") {
+      filter.frequency.value = 900;
+      filter.Q.value = 0.6;
+      const o1 = ctx.createOscillator();
+      o1.type = "sine";
+      o1.frequency.value = freq * 0.5; // sub octave
+      const o2 = ctx.createOscillator();
+      o2.type = "sine";
+      o2.frequency.value = freq;
+      const o2g = ctx.createGain();
+      o2g.gain.value = 0.4;
+      o1.connect(filter);
+      o2.connect(o2g).connect(filter);
+      o1.start(when);
+      o2.start(when);
+      oscs.push(o1, o2);
+      attack = 0.05;
+      release = Math.min(2.2, duration * 1);
+      peak = velocity * 0.32;
     } else {
       // pulse: short percussive blip
       filter.frequency.value = 1800;
@@ -341,7 +420,7 @@ export class AudioEngine {
       oscs.push(o);
       attack = 0.002;
       release = Math.min(0.35, duration * 0.4);
-      peak = velocity * 0.22;
+      peak = velocity * 0.18;
     }
 
     const t0 = when;
