@@ -1,36 +1,13 @@
-import {
-  Sparkles,
-  Waves,
-  Network,
-  CircleDot,
-  CloudRain,
-  Orbit,
-  Grid3x3,
-  Activity,
-  Flame,
-  Bug,
-  Flower2,
-} from "lucide-react";
+import { Network, Sparkles, Activity, Orbit, CloudRain } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Voice } from "./AudioEngine";
 
-export type Mode =
-  | "garden"
-  | "stream"
-  | "constellation"
-  | "spiral"
-  | "rain"
-  | "orbit"
-  | "grid"
-  | "waveform"
-  | "fireworks"
-  | "swarm"
-  | "mandala";
+export type Mode = "constellation" | "garden" | "pulse" | "orbit" | "rain";
 
-export type ModeGroup = "Organic" | "Geometric" | "Linear";
+export type ModeGroup = "Network" | "Motion";
 
 export interface Scale {
-  root: number; // MIDI
+  root: number;
   intervals: number[];
   octaves: number;
 }
@@ -46,112 +23,52 @@ export interface ModeDef {
 }
 
 const PENT_MIN = [0, 3, 5, 7, 10];
-const DORIAN = [0, 2, 3, 5, 7, 9, 10];
-const LYDIAN = [0, 2, 4, 6, 7, 9, 11];
-const PHRYGIAN = [0, 1, 3, 5, 7, 8, 10];
-const PENT_MAJ = [0, 2, 4, 7, 9];
-const NAT_MIN = [0, 2, 3, 5, 7, 8, 10];
-const MAJ_TRIAD = [0, 4, 7];
 
 export const MODES: ModeDef[] = [
   {
+    id: "constellation",
+    label: "Constellation",
+    group: "Network",
+    icon: Network,
+    scale: { root: 50, intervals: PENT_MIN, octaves: 3 },
+    defaultVoice: "crystal",
+    description: "Glowing nodes linked by comet arcs across the network.",
+  },
+  {
     id: "garden",
     label: "Garden",
-    group: "Organic",
+    group: "Network",
     icon: Sparkles,
     scale: { root: 50, intervals: PENT_MIN, octaves: 3 },
     defaultVoice: "bloom",
-    description: "Hash-placed blooms across the canvas.",
-  },
-  {
-    id: "spiral",
-    label: "Spiral",
-    group: "Organic",
-    icon: CircleDot,
-    scale: { root: 54, intervals: PENT_MIN, octaves: 3 }, // F#
-    defaultVoice: "crystal",
-    description: "Transactions spiral outward from the center.",
-  },
-  {
-    id: "swarm",
-    label: "Swarm",
-    group: "Organic",
-    icon: Bug,
-    scale: { root: 47, intervals: PENT_MIN, octaves: 3 }, // B
-    defaultVoice: "bloom",
-    description: "Boids flock around hash-seeded attractors.",
-  },
-  {
-    id: "fireworks",
-    label: "Fireworks",
-    group: "Organic",
-    icon: Flame,
-    scale: { root: 50, intervals: DORIAN, octaves: 4 },
-    defaultVoice: "bloom",
-    description: "Bursts rise and explode — bigger amounts, bigger booms.",
-  },
-  {
-    id: "constellation",
-    label: "Constellation",
-    group: "Geometric",
-    icon: Network,
-    scale: { root: 48, intervals: LYDIAN, octaves: 3 }, // C
-    defaultVoice: "crystal",
-    description: "Block proposers form a luminous ring.",
-  },
-  {
-    id: "grid",
-    label: "Grid Pulse",
-    group: "Geometric",
-    icon: Grid3x3,
-    scale: { root: 43, intervals: PENT_MIN, octaves: 3 }, // G
-    defaultVoice: "pulse",
-    description: "Quantized cells flash in rhythm.",
-  },
-  {
-    id: "mandala",
-    label: "Mandala",
-    group: "Geometric",
-    icon: Flower2,
-    scale: { root: 53, intervals: LYDIAN, octaves: 3 }, // F
-    defaultVoice: "crystal",
-    description: "Symmetric kaleidoscope around the center.",
+    description: "Each transaction sprouts a small bloom at its destination.",
   },
   {
     id: "orbit",
     label: "Orbit",
-    group: "Geometric",
+    group: "Network",
     icon: Orbit,
-    scale: { root: 48, intervals: MAJ_TRIAD, octaves: 4 },
+    scale: { root: 48, intervals: PENT_MIN, octaves: 4 },
     defaultVoice: "bloom",
-    description: "A central sun, transactions in slow orbit.",
+    description: "High-traffic accounts become orbital centers; transactions arc between them.",
   },
   {
-    id: "stream",
-    label: "Stream",
-    group: "Linear",
-    icon: Waves,
-    scale: { root: 45, intervals: DORIAN, octaves: 3 }, // A
-    defaultVoice: "bloom",
-    description: "A river of transactions flowing left-to-right.",
+    id: "pulse",
+    label: "Pulse Lines",
+    group: "Motion",
+    icon: Activity,
+    scale: { root: 50, intervals: PENT_MIN, octaves: 3 },
+    defaultVoice: "pulse",
+    description: "Clean radial ripples emitted by each transaction.",
   },
   {
     id: "rain",
     label: "Rain",
-    group: "Linear",
+    group: "Motion",
     icon: CloudRain,
-    scale: { root: 52, intervals: PHRYGIAN, octaves: 3 }, // E
+    scale: { root: 50, intervals: PENT_MIN, octaves: 3 },
     defaultVoice: "pulse",
-    description: "Glyphs falling from the top.",
-  },
-  {
-    id: "waveform",
-    label: "Waveform",
-    group: "Linear",
-    icon: Activity,
-    scale: { root: 45, intervals: NAT_MIN, octaves: 3 }, // A
-    defaultVoice: "crystal",
-    description: "An audio-scope of incoming transactions.",
+    description: "Soft vertical light streaks falling like calm rain.",
   },
 ];
 
@@ -163,4 +80,4 @@ export const MODE_BY_ID: Record<Mode, ModeDef> = MODES.reduce(
   {} as Record<Mode, ModeDef>,
 );
 
-export const GROUPS: ModeGroup[] = ["Organic", "Geometric", "Linear"];
+export const GROUPS: ModeGroup[] = ["Network", "Motion"];
