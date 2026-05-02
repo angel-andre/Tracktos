@@ -8,91 +8,104 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 220 17% 7%;
+    /* Aptos palette: Mint #DAF6D4 (125 60% 90%), Baby Blue #BADBEE (205 60% 83%),
+       Coral #FE805C (12 99% 68%), Ink #171612, Creme #EFECCA, Sand #CCC5A3 */
+    --background: 48 35% 96%;          /* Creme tint */
+    --foreground: 30 18% 8%;           /* Ink */
 
     --card: 0 0% 100%;
-    --card-foreground: 220 17% 7%;
+    --card-foreground: 30 18% 8%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 17% 7%;
+    --popover-foreground: 30 18% 8%;
 
-    --primary: 142 76% 36%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 125 50% 55%;            /* Mint, deepened for contrast on white */
+    --primary-foreground: 30 18% 8%;
+    --primary-glow: 125 60% 90%;       /* True Mint */
 
-    --secondary: 220 15% 95%;
-    --secondary-foreground: 220 17% 7%;
+    --secondary: 205 60% 83%;          /* Baby Blue */
+    --secondary-foreground: 30 18% 8%;
 
-    --muted: 220 15% 95%;
-    --muted-foreground: 220 9% 40%;
+    --muted: 48 25% 92%;
+    --muted-foreground: 30 10% 35%;
 
-    --accent: 142 76% 36%;
+    --accent: 12 99% 68%;              /* Coral */
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 15% 85%;
-    --input: 220 15% 90%;
-    --ring: 142 76% 36%;
+    --border: 30 15% 85%;
+    --input: 30 15% 90%;
+    --ring: 12 99% 68%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
-    --chart-1: 142 76% 36%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --chart-1: 125 50% 55%;
+    --chart-2: 205 60% 70%;
+    --chart-3: 12 99% 68%;
+    --chart-4: 43 50% 60%;
+    --chart-5: 30 25% 55%;
 
-    --gradient-bg: linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(220 15% 98%) 100%);
-    --gradient-card: linear-gradient(135deg, hsl(0 0% 100% / 0.8) 0%, hsl(220 15% 98% / 0.6) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(142 76% 36%) 0%, hsl(142 70% 45%) 100%);
-    --glow-primary: 0 0 60px hsl(142 76% 36% / 0.2);
-    --glow-card: 0 4px 20px hsl(220 15% 0% / 0.1);
-    --shadow-elevated: 0 8px 32px hsl(220 15% 0% / 0.1);
+    --gradient-bg: radial-gradient(ellipse at top left, hsl(125 60% 90% / 0.5), transparent 50%),
+                   radial-gradient(ellipse at bottom right, hsl(205 60% 83% / 0.4), transparent 50%),
+                   linear-gradient(180deg, hsl(48 35% 96%), hsl(48 30% 94%));
+    --gradient-card: linear-gradient(135deg, hsl(0 0% 100% / 0.85), hsl(48 30% 96% / 0.75));
+    --gradient-accent: linear-gradient(135deg, hsl(12 99% 68%), hsl(12 95% 60%));
+    --gradient-mint: linear-gradient(135deg, hsl(125 60% 90%), hsl(125 50% 75%));
+    --gradient-hero: linear-gradient(135deg, hsl(125 60% 90%) 0%, hsl(205 60% 83%) 50%, hsl(12 99% 78%) 100%);
+    --glow-primary: 0 0 60px hsl(12 99% 68% / 0.25);
+    --glow-card: 0 4px 24px hsl(30 18% 8% / 0.08);
+    --shadow-elevated: 0 12px 40px hsl(30 18% 8% / 0.12);
   }
 
   .dark {
-    --background: 220 17% 7%;
-    --foreground: 220 9% 98%;
+    /* Ink-based dark using Aptos Ink #171612 / Coal #21201C */
+    --background: 30 14% 7%;           /* Ink */
+    --foreground: 48 30% 94%;          /* Creme */
 
-    --card: 220 15% 10%;
-    --card-foreground: 220 9% 98%;
+    --card: 30 12% 10%;                /* Coal */
+    --card-foreground: 48 30% 94%;
 
-    --popover: 220 15% 10%;
-    --popover-foreground: 220 9% 98%;
+    --popover: 30 12% 10%;
+    --popover-foreground: 48 30% 94%;
 
-    --primary: 142 76% 36%;
-    --primary-foreground: 220 9% 98%;
+    --primary: 125 60% 78%;            /* Mint glows on dark */
+    --primary-foreground: 30 18% 8%;
+    --primary-glow: 125 60% 85%;
 
-    --secondary: 220 15% 15%;
-    --secondary-foreground: 220 9% 98%;
+    --secondary: 205 50% 70%;          /* Baby Blue */
+    --secondary-foreground: 30 18% 8%;
 
-    --muted: 220 15% 15%;
-    --muted-foreground: 220 9% 60%;
+    --muted: 30 10% 15%;
+    --muted-foreground: 48 15% 65%;
 
-    --accent: 142 76% 36%;
-    --accent-foreground: 220 9% 98%;
+    --accent: 12 99% 68%;              /* Coral */
+    --accent-foreground: 30 18% 8%;
 
     --destructive: 0 84% 60%;
-    --destructive-foreground: 220 9% 98%;
+    --destructive-foreground: 48 30% 94%;
 
-    --border: 220 15% 20%;
-    --input: 220 15% 15%;
-    --ring: 142 76% 36%;
+    --border: 30 10% 20%;
+    --input: 30 10% 15%;
+    --ring: 12 99% 68%;
 
-    --chart-1: 142 76% 36%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --chart-1: 125 60% 78%;
+    --chart-2: 205 50% 70%;
+    --chart-3: 12 99% 68%;
+    --chart-4: 43 60% 70%;
+    --chart-5: 48 20% 75%;
 
-    --gradient-bg: linear-gradient(135deg, hsl(220 17% 7%) 0%, hsl(220 15% 10%) 100%);
-    --gradient-card: linear-gradient(135deg, hsl(220 15% 10% / 0.8) 0%, hsl(220 15% 12% / 0.6) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(142 76% 36%) 0%, hsl(142 70% 45%) 100%);
-    --glow-primary: 0 0 60px hsl(142 76% 36% / 0.3);
-    --glow-card: 0 4px 20px hsl(220 15% 0% / 0.4);
-    --shadow-elevated: 0 8px 32px hsl(220 15% 0% / 0.6);
+    --gradient-bg: radial-gradient(ellipse at top left, hsl(125 60% 30% / 0.25), transparent 50%),
+                   radial-gradient(ellipse at bottom right, hsl(12 99% 50% / 0.18), transparent 50%),
+                   linear-gradient(180deg, hsl(30 14% 7%), hsl(30 12% 5%));
+    --gradient-card: linear-gradient(135deg, hsl(30 12% 12% / 0.9), hsl(30 10% 8% / 0.7));
+    --gradient-accent: linear-gradient(135deg, hsl(12 99% 68%), hsl(12 95% 58%));
+    --gradient-mint: linear-gradient(135deg, hsl(125 60% 30%), hsl(125 50% 40%));
+    --gradient-hero: linear-gradient(135deg, hsl(125 50% 25%) 0%, hsl(205 40% 25%) 50%, hsl(12 70% 35%) 100%);
+    --glow-primary: 0 0 80px hsl(125 60% 50% / 0.3);
+    --glow-card: 0 4px 24px hsl(0 0% 0% / 0.5);
+    --shadow-elevated: 0 12px 40px hsl(0 0% 0% / 0.6);
   }
 }
 
@@ -109,5 +122,63 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
     min-height: 100vh;
     min-height: 100dvh;
+    background-image: var(--gradient-bg);
+    background-attachment: fixed;
+  }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+
+  /* Subtle dotted grid that nods to network nodes */
+  .bg-grid-aptos {
+    background-image:
+      radial-gradient(hsl(var(--foreground) / 0.08) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  .glass-panel {
+    background: var(--gradient-card);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid hsl(var(--border) / 0.6);
+    box-shadow: var(--glow-card);
+  }
+
+  .text-gradient-aptos {
+    background: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(125 50% 45%) 50%, hsl(205 70% 55%) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .ticker-mask {
+    mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+  }
+
+  @keyframes ticker {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  .animate-ticker { animation: ticker 40s linear infinite; }
+
+  @keyframes float-slow {
+    0%, 100% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(20px,-30px) scale(1.05); }
+  }
+  .animate-float-slow { animation: float-slow 14s ease-in-out infinite; }
+
+  @keyframes pulse-ring {
+    0% { transform: scale(0.95); opacity: 0.7; }
+    100% { transform: scale(1.6); opacity: 0; }
+  }
+  .animate-pulse-ring { animation: pulse-ring 2.4s cubic-bezier(0.215, 0.61, 0.355, 1) infinite; }
+
+  @keyframes blob-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .animate-blob-spin { animation: blob-spin 40s linear infinite; }
   }
 }
