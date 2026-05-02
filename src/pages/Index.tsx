@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Activity, Plus, RefreshCw, Globe, Music2 } from "lucide-react";
+import { Loader2, Activity, Plus, RefreshCw, Globe, Music2, Sparkles, ArrowRight, Zap, BarChart3, Wallet } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -332,74 +332,179 @@ export default function IndexPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background py-8 px-4">
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* Beta Banner */}
-        <Alert className="bg-primary/10 border-primary/30">
-          <Info className="h-4 w-4 text-primary" />
-          <AlertDescription className="text-foreground">
-            Still in beta, doing public testing
-          </AlertDescription>
-        </Alert>
+    <div className="relative min-h-screen overflow-hidden">
+      {/* Artistic background layer — aurora blobs, dotted grid */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
+        <div className="absolute inset-0 bg-grid-aptos opacity-40" />
+        <div className="absolute -top-32 -left-32 w-[42rem] h-[42rem] rounded-full bg-[hsl(125_60%_85%/0.55)] blur-3xl animate-float-slow dark:bg-[hsl(125_60%_30%/0.35)]" />
+        <div className="absolute top-1/3 -right-40 w-[38rem] h-[38rem] rounded-full bg-[hsl(205_70%_80%/0.5)] blur-3xl animate-float-slow dark:bg-[hsl(205_50%_30%/0.35)]" style={{ animationDelay: "-6s" }} />
+        <div className="absolute bottom-0 left-1/3 w-[34rem] h-[34rem] rounded-full bg-[hsl(12_99%_75%/0.35)] blur-3xl animate-float-slow dark:bg-[hsl(12_99%_45%/0.25)]" style={{ animationDelay: "-3s" }} />
+      </div>
 
-        {/* Header */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Link 
-                to="/globe" 
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 border border-primary/30 transition-colors"
-              >
-                <Globe className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium text-primary hidden sm:inline">Live Network</span>
-              </Link>
-              <Link 
-                to="/pulse" 
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 border border-primary/30 transition-colors"
-              >
-                <Music2 className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium text-primary hidden sm:inline">Pulse</span>
-              </Link>
+      {/* Top nav bar */}
+      <header className="relative z-10 px-4 sm:px-8 pt-6">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-accent/40 blur-md animate-pulse-ring" />
+              <img src={aptosLogo} alt="Aptos" className="relative w-9 h-9" />
             </div>
-            <div className="flex items-center justify-center gap-3 flex-1">
-              <img src={aptosLogo} alt="Aptos Logo" className="w-10 h-10" />
-              <h1 className="text-4xl font-bold text-foreground">
-                Tracktos
-              </h1>
-              <Activity className="w-6 h-6 text-primary" />
-            </div>
-            <div className="w-32 flex justify-end">
-              <ThemeToggle />
+            <div className="leading-none">
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-bold tracking-tight">Tracktos</span>
+                <Activity className="w-4 h-4 text-accent" />
+              </div>
+              <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Aptos Wallet Intelligence</span>
             </div>
           </div>
-          <p className="text-muted-foreground text-center">Explore your Aptos adventure through wallet analytics and insights</p>
-          <div className="text-center">
-            <Button
-              onClick={handleTryDemo}
-              variant="outline"
-              size="sm"
-              className="mt-2"
-              disabled={loading}
-            >
-              Try Demo
-            </Button>
+
+          <nav className="hidden md:flex items-center gap-1 glass-panel rounded-full px-2 py-1.5">
+            <Link to="/globe" className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium hover:bg-foreground/5 transition-colors">
+              <Globe className="w-4 h-4 text-[hsl(205_60%_50%)]" />
+              Live Network
+            </Link>
+            <Link to="/pulse" className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium hover:bg-foreground/5 transition-colors">
+              <Music2 className="w-4 h-4 text-accent" />
+              Aptos Pulse
+            </Link>
+          </nav>
+
+          <div className="flex items-center gap-2">
+            <Link to="/globe" className="md:hidden p-2 rounded-full glass-panel">
+              <Globe className="w-4 h-4 text-[hsl(205_60%_50%)]" />
+            </Link>
+            <Link to="/pulse" className="md:hidden p-2 rounded-full glass-panel">
+              <Music2 className="w-4 h-4 text-accent" />
+            </Link>
+            <ThemeToggle />
           </div>
         </div>
+      </header>
 
+      {/* Hero */}
+      <section className="relative z-10 px-4 sm:px-8 pt-10 pb-8">
+        <div className="max-w-7xl mx-auto">
+          <Alert className="mb-8 glass-panel border-accent/30 bg-accent/5">
+            <Info className="h-4 w-4 text-accent" />
+            <AlertDescription className="text-foreground">
+              <span className="font-semibold text-accent">Beta</span> — Tracktos is in public testing. Expect rapid iteration.
+            </AlertDescription>
+          </Alert>
+
+          <div className="grid lg:grid-cols-12 gap-10 items-center">
+            <div className="lg:col-span-7 space-y-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-panel text-xs font-medium tracking-wide">
+                <Sparkles className="w-3.5 h-3.5 text-accent" />
+                Built for the Aptos network
+              </div>
+              <h1 className="text-balance text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05]">
+                Watch your wallet{" "}
+                <span className="text-gradient-aptos">move with the chain.</span>
+              </h1>
+              <p className="text-balance text-lg text-muted-foreground max-w-xl">
+                Tracktos turns raw Aptos transactions into a living portrait — portfolio, NFTs, DeFi flows, and on-chain identity, rendered with the network's own rhythm.
+              </p>
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <Button
+                  onClick={handleTryDemo}
+                  disabled={loading}
+                  size="lg"
+                  className="gap-2 bg-accent hover:bg-accent/90 text-accent-foreground rounded-full px-6 shadow-[var(--shadow-elevated)]"
+                >
+                  Try a live demo wallet
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+                <Link to="/pulse">
+                  <Button variant="outline" size="lg" className="gap-2 rounded-full px-6 glass-panel border-foreground/15">
+                    <Music2 className="w-4 h-4 text-accent" />
+                    Open Aptos Pulse
+                  </Button>
+                </Link>
+              </div>
+
+              {/* Feature pills */}
+              <div className="grid grid-cols-3 gap-3 pt-6 max-w-xl">
+                {[
+                  { icon: Wallet, label: "Portfolio", color: "hsl(125 50% 45%)", bg: "hsl(125 60% 90%)" },
+                  { icon: BarChart3, label: "Analytics", color: "hsl(205 70% 40%)", bg: "hsl(205 60% 88%)" },
+                  { icon: Zap, label: "DeFi Flows", color: "hsl(12 80% 50%)", bg: "hsl(12 99% 90%)" },
+                ].map(({ icon: Icon, label, color, bg }) => (
+                  <div key={label} className="glass-panel rounded-xl px-3 py-3 flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: bg }}>
+                      <Icon className="w-4 h-4" style={{ color }} />
+                    </span>
+                    <span className="text-sm font-medium">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Decorative network orb */}
+            <div className="lg:col-span-5 hidden lg:block">
+              <div className="relative aspect-square max-w-md mx-auto">
+                <div className="absolute inset-0 rounded-full" style={{ background: "var(--gradient-hero)", filter: "blur(40px)", opacity: 0.55 }} />
+                <div className="absolute inset-6 rounded-full glass-panel animate-blob-spin" style={{ borderRadius: "42% 58% 53% 47% / 51% 44% 56% 49%" }} />
+                <div className="absolute inset-14 rounded-full bg-card/60 backdrop-blur-2xl border border-border/60 flex items-center justify-center">
+                  <img src={aptosLogo} alt="" className="w-24 h-24 opacity-90" />
+                </div>
+                {/* orbiting dots */}
+                {[0, 1, 2, 3, 4, 5].map((i) => (
+                  <div
+                    key={i}
+                    className="absolute top-1/2 left-1/2 w-2 h-2 rounded-full"
+                    style={{
+                      background: i % 3 === 0 ? "hsl(12 99% 68%)" : i % 3 === 1 ? "hsl(125 50% 55%)" : "hsl(205 60% 60%)",
+                      transform: `rotate(${i * 60}deg) translateX(160px)`,
+                      boxShadow: "0 0 12px currentColor",
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Live ticker */}
+          <div className="mt-12 ticker-mask overflow-hidden border-y border-border/60 py-3">
+            <div className="flex gap-12 animate-ticker whitespace-nowrap text-xs uppercase tracking-[0.25em] text-muted-foreground">
+              {Array.from({ length: 2 }).map((_, k) => (
+                <div key={k} className="flex gap-12">
+                  <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" /> Live Aptos data</span>
+                  <span>Wallet analytics</span>
+                  <span>NFT portfolio</span>
+                  <span>DeFi swaps · staking</span>
+                  <span>Validator map</span>
+                  <span>Transaction pulse</span>
+                  <span>Portfolio history</span>
+                  <span>On-chain identity</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Main content */}
+      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-8 pb-16 space-y-8">
         {/* Control Panel */}
-        <div className="backdrop-blur-xl bg-card/50 border border-border/50 rounded-xl shadow-xl p-6 space-y-4">
+        <div className="glass-panel rounded-2xl p-6 space-y-4 shadow-[var(--shadow-elevated)]">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-lg font-semibold">Analyze a wallet</h2>
+              <p className="text-sm text-muted-foreground">Paste any Aptos address or pick from your saved wallets.</p>
+            </div>
+          </div>
           <div className="flex gap-2">
             <Button
               onClick={() => handleNetworkChange("mainnet")}
               variant={network === "mainnet" ? "default" : "outline"}
-              className="font-medium"
+              className={`font-medium rounded-full ${network === "mainnet" ? "bg-foreground text-background hover:bg-foreground/90" : ""}`}
             >
               Mainnet
             </Button>
             <Button
               onClick={() => handleNetworkChange("testnet")}
               variant={network === "testnet" ? "default" : "outline"}
-              className="font-medium"
+              className={`font-medium rounded-full ${network === "testnet" ? "bg-foreground text-background hover:bg-foreground/90" : ""}`}
             >
               Testnet
             </Button>
@@ -575,7 +680,7 @@ export default function IndexPage() {
             </TabsContent>
           </Tabs>
         )}
-      </div>
+      </main>
     </div>
   );
 }
