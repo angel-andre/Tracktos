@@ -83,6 +83,10 @@ export function useFlowEngine({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
   const mousePosRef = useRef<{ x: number; y: number } | null>(null);
+  const hoveredIdRef = useRef<string | null>(null);
+  const hoverInfoRef = useRef<HoverInfo | null>(null);
+  // Throttle React state updates from the high-frequency render loop.
+  const lastHoverPushRef = useRef<number>(0);
 
   modeRef.current = mode;
   maxRef.current = maxFlows;
@@ -321,28 +325,34 @@ export function useFlowEngine({
           }
         }
       }
-      if (next !== hoveredId) setHoveredId(next);
-      // Update hover info (compare by tx hash to avoid re-render churn).
-      setHoverInfo((prev) => {
-        if (!nextInfo && !prev) return prev;
-        if (!nextInfo) return null;
-        if (
-          prev &&
-          prev.tx.hash === nextInfo.tx.hash &&
-          Math.abs(prev.x - nextInfo.x) < 1 &&
-          Math.abs(prev.y - nextInfo.y) < 1
-        ) {
-          return prev;
-        }
-        return nextInfo;
-      });
+      // Hover state lives in refs; we publish to React at most every ~50ms
+      // and only when the underlying tx hash changes or position drifts.
+      hoveredIdRef.current = next;
+      hoverInfoRef.current = nextInfo;
+      const nowMs = performance.now();
+      if (nowMs - lastHoverPushRef.current > 50) {
+        lastHoverPushRef.current = nowMs;
+        setHoveredId(next);
+        setHoverInfo((prev) => {
+          if (!nextInfo && !prev) return prev;
+          if (!nextInfo) return null;
+          if (
+            prev &&
+            prev.tx.hash === nextInfo.tx.hash &&
+            Math.abs(prev.x - nextInfo.x) < 2 &&
+            Math.abs(prev.y - nextInfo.y) < 2
+          ) {
+            return prev;
+          }
+          return nextInfo;
+        });
+      }
 
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getAnchorAt, hoveredId]);
+  }, [getAnchorAt]);
 
   const snapshot = useCallback(() => {
     const c = canvasRef.current;
