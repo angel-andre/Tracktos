@@ -11,14 +11,14 @@ export type VoicePref = Voice | "auto";
 
 interface Options {
   transactions: Transaction[];
-  tps: number;
   mode: Mode;
+  lastBurst: { txs: Transaction[]; at: number } | null;
 }
 
-export function useAudioEngine({ transactions, tps, mode }: Options) {
+export function useAudioEngine({ transactions, mode, lastBurst }: Options) {
   const engineRef = useRef<AudioEngine | null>(null);
-  const seenRef = useRef<Set<string>>(new Set());
   const initSeededRef = useRef(false);
+  const lastBurstAtRef = useRef<number>(0);
 
   const [muted, setMutedState] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
@@ -62,7 +62,9 @@ export function useAudioEngine({ transactions, tps, mode }: Options) {
       if (!m) {
         await ensureEngine();
         if (!initSeededRef.current) {
-          for (const tx of transactions) seenRef.current.add(tx.hash);
+          // Mark currently-buffered txs as already-played so we don't
+          // dump the whole backlog as soon as audio turns on.
+          engineRef.current?.seenWithoutPlaying(transactions.map((t) => t.hash));
           initSeededRef.current = true;
         }
       }
@@ -93,27 +95,14 @@ export function useAudioEngine({ transactions, tps, mode }: Options) {
     eng.setPerTypeVoice(voicePref === "auto");
   }, [mode, effectiveVoice, def.scale, voicePref]);
 
-  // Watch transactions
+  // React to *bursts* (fresh poll batches), not the full transactions array.
   useEffect(() => {
     const eng = engineRef.current;
-    if (!eng || muted) {
-      for (const tx of transactions) seenRef.current.add(tx.hash);
-      return;
-    }
-    const fresh: Transaction[] = [];
-    for (const tx of transactions) {
-      if (!seenRef.current.has(tx.hash)) {
-        seenRef.current.add(tx.hash);
-        fresh.push(tx);
-      }
-    }
-    fresh.reverse().forEach((tx) => eng.playTransaction(tx));
-  }, [transactions, muted]);
-
-  useEffect(() => {
-    engineRef.current?.setAmbientLevel(tps);
-    engineRef.current?.setTps(tps);
-  }, [tps]);
+    if (!eng || muted || !lastBurst) return;
+    if (lastBurst.at === lastBurstAtRef.current) return;
+    lastBurstAtRef.current = lastBurst.at;
+    eng.playBurst(lastBurst.txs);
+  }, [lastBurst, muted]);
 
   useEffect(() => {
     return () => {

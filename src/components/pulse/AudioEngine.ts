@@ -43,9 +43,6 @@ export class AudioEngine {
   private wet: GainNode | null = null;
   private reverb: ConvolverNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
-  private ambientGain: GainNode | null = null;
-  private ambientFilter: BiquadFilterNode | null = null;
-  private ambientOscs: OscillatorNode[] = [];
 
   private voice: Voice = "bloom";
   private muted = true;
@@ -56,10 +53,12 @@ export class AudioEngine {
   private scaleNotes: number[] = buildScale(DEFAULT_SCALE);
   private quantize: number | null = null; // grid duration in seconds, null = off
   private chordSize = 1;
-  private padRoot = 38;
-  private tps = 0;
   private recentNotes: { key: string; t: number }[] = [];
   private perTypeVoice = true;
+  // Hard rule: a tx hash can only ever produce one chime, period.
+  private playedHashes: Set<string> = new Set();
+  private playedOrder: string[] = [];
+  private static MAX_PLAYED = 5000;
 
   isReady() {
     return !!this.ctx;
@@ -98,24 +97,6 @@ export class AudioEngine {
     this.dry.connect(this.compressor);
     this.wet.connect(this.reverb).connect(this.compressor);
     this.compressor.connect(this.master).connect(this.ctx.destination);
-
-    // Ambient pad
-    this.ambientFilter = this.ctx.createBiquadFilter();
-    this.ambientFilter.type = "lowpass";
-    this.ambientFilter.frequency.value = 600;
-    this.ambientFilter.Q.value = 0.8;
-    this.ambientGain = this.ctx.createGain();
-    this.ambientGain.gain.value = 0;
-    const padNotes = [this.padRoot, this.padRoot + 7, this.padRoot + 12];
-    for (const n of padNotes) {
-      const o = this.ctx.createOscillator();
-      o.type = "sine";
-      o.frequency.value = midiToFreq(n);
-      o.connect(this.ambientFilter);
-      o.start();
-      this.ambientOscs.push(o);
-    }
-    this.ambientFilter.connect(this.ambientGain).connect(this.dry);
 
     document.addEventListener("visibilitychange", this.onVisibility);
   }
@@ -166,14 +147,6 @@ export class AudioEngine {
 
   setScale(s: ScaleDef) {
     this.scaleNotes = buildScale(s);
-    this.padRoot = s.root - 12; // pad an octave below root
-    if (this.ctx && this.ambientOscs.length === 3) {
-      const t = this.ctx.currentTime;
-      const padNotes = [this.padRoot, this.padRoot + 7, this.padRoot + 12];
-      this.ambientOscs.forEach((o, i) => {
-        o.frequency.linearRampToValueAtTime(midiToFreq(padNotes[i]), t + 0.6);
-      });
-    }
   }
 
   setQuantize(seconds: number | null) {
@@ -188,24 +161,45 @@ export class AudioEngine {
     this.perTypeVoice = on;
   }
 
-  setTps(tps: number) {
-    this.tps = tps;
+  // Mark a hash as already-played so the engine refuses to re-trigger it.
+  // Used at unmute time to avoid replaying the buffered backlog.
+  seenWithoutPlaying(hashes: string[]) {
+    for (const h of hashes) this.markPlayed(h);
   }
 
-  setAmbientLevel(tps: number) {
-    if (!this.ctx || !this.ambientGain || !this.ambientFilter) return;
-    const t = this.ctx.currentTime;
-    const norm = Math.min(1, tps / 200);
-    const targetGain = 0.04 + norm * 0.1;
-    const targetCutoff = 350 + norm * 1800;
-    this.ambientGain.gain.linearRampToValueAtTime(targetGain, t + 0.5);
-    this.ambientFilter.frequency.linearRampToValueAtTime(targetCutoff, t + 0.5);
+  private markPlayed(hash: string) {
+    if (this.playedHashes.has(hash)) return;
+    this.playedHashes.add(hash);
+    this.playedOrder.push(hash);
+    if (this.playedOrder.length > AudioEngine.MAX_PLAYED) {
+      const drop = this.playedOrder.shift();
+      if (drop) this.playedHashes.delete(drop);
+    }
   }
 
-  playTransaction(tx: Transaction) {
+  // Play a *burst* of fresh transactions arriving in the same poll.
+  // Caps audible voices to 6 (highest amount), the rest are silently
+  // marked as played so they never re-trigger later.
+  playBurst(txs: Transaction[]) {
+    if (!this.ctx || this.muted || txs.length === 0) return;
+    const fresh = txs.filter((t) => !this.playedHashes.has(t.hash));
+    if (fresh.length === 0) return;
+    const sorted = [...fresh].sort((a, b) => b.amount - a.amount);
+    const audible = sorted.slice(0, 6);
+    const skipped = sorted.slice(6);
+    skipped.forEach((t) => this.markPlayed(t.hash));
+    // Stagger lightly so we don't pile 6 attacks on a single sample.
+    const start = this.ctx.currentTime;
+    audible.forEach((tx, i) => this.playTransaction(tx, start + i * 0.045));
+  }
+
+  playTransaction(tx: Transaction, scheduledAt?: number) {
     if (!this.ctx || this.muted) return;
+    // 1:1 contract — never re-play a hash.
+    if (this.playedHashes.has(tx.hash)) return;
+    this.markPlayed(tx.hash);
     const ctx = this.ctx;
-    const rawNow = ctx.currentTime;
+    const rawNow = scheduledAt ?? ctx.currentTime;
     let now = rawNow;
     if (this.quantize) {
       const grid = this.quantize;
@@ -278,8 +272,8 @@ export class AudioEngine {
       });
     }
 
-    // High-TPS ducking
-    const duck = this.tps > 50 ? Math.max(0.4, 1 - (this.tps - 50) / 200) : 1;
+    // Fixed soft duck so big bursts don't overwhelm; compressor handles peaks.
+    const duck = 0.85;
 
     // Stereo pan from sender hash
     const pan = ((h % 1000) / 1000) * 2 - 1;
@@ -438,14 +432,6 @@ export class AudioEngine {
 
   dispose() {
     document.removeEventListener("visibilitychange", this.onVisibility);
-    this.ambientOscs.forEach((o) => {
-      try {
-        o.stop();
-      } catch {
-        /* noop */
-      }
-    });
-    this.ambientOscs = [];
     if (this.ctx) {
       this.ctx.close().catch(() => {
         /* noop */

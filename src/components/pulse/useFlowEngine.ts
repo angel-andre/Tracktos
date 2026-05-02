@@ -22,6 +22,9 @@ interface Options {
   paused: boolean;
   tps: number;
   speed: number; // 0.5..2 multiplier (higher = faster)
+  // Optional pulse marker: set to a new timestamp whenever a fresh batch
+  // of unique mainnet txs arrives. The engine paints a one-shot sweep.
+  burstAt?: number;
 }
 
 export interface FlowEngineHandle {
@@ -60,6 +63,7 @@ export function useFlowEngine({
   paused,
   tps,
   speed,
+  burstAt,
 }: Options): FlowEngineHandle {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const flowsRef = useRef<FlowState[]>([]);
@@ -74,6 +78,8 @@ export function useFlowEngine({
   const tpsRef = useRef(tps);
   const speedRef = useRef(speed);
   const timeRef = useRef(0);
+  const burstTimeRef = useRef<number>(0); // canvas-time when burst fired
+  const lastBurstAtRef = useRef<number>(0);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
   const mousePosRef = useRef<{ x: number; y: number } | null>(null);
@@ -83,6 +89,14 @@ export function useFlowEngine({
   pausedRef.current = paused;
   tpsRef.current = tps;
   speedRef.current = speed;
+
+  // Trigger a sweep marker exactly when a new burst lands.
+  useEffect(() => {
+    if (!burstAt) return;
+    if (burstAt === lastBurstAtRef.current) return;
+    lastBurstAtRef.current = burstAt;
+    burstTimeRef.current = timeRef.current;
+  }, [burstAt]);
 
   // Reset anchors when mode changes (positions are mode-dependent)
   useEffect(() => {
@@ -206,6 +220,20 @@ export function useFlowEngine({
       const m = modeRef.current;
 
       drawBackground(ctx, w, h, tpsRef.current, timeRef.current);
+
+      // One-shot horizontal sweep when a new poll burst arrives.
+      const sinceBurst = timeRef.current - burstTimeRef.current;
+      if (burstTimeRef.current > 0 && sinceBurst < 0.9) {
+        const t = sinceBurst / 0.9;
+        const sweepX = t * w;
+        const a = (1 - t) * 0.35;
+        const grad = ctx.createLinearGradient(sweepX - 80, 0, sweepX + 80, 0);
+        grad.addColorStop(0, cssVarHsl("--primary", 0));
+        grad.addColorStop(0.5, cssVarHsl("--primary", a));
+        grad.addColorStop(1, cssVarHsl("--primary", 0));
+        ctx.fillStyle = grad;
+        ctx.fillRect(sweepX - 80, 0, 160, h);
+      }
 
       if (!pausedRef.current) {
         anchorsRef.current.tick(dt);
