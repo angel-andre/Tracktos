@@ -13,6 +13,18 @@ import {
   drawPlanetCenter,
   cssVarHsl,
   hash32,
+  PhantomField,
+  GardenBed,
+  PuddleField,
+  EdgeMemory,
+  drawHeartbeat,
+  drawEpochRing,
+  drawBlockFlash,
+  drawWhaleVignette,
+  labelForKey,
+  drawPlanetLabel,
+  archetypeFor,
+  colorVarFor,
 } from "./flows";
 import type { Mode } from "./modes";
 
@@ -26,6 +38,16 @@ interface Options {
   // Optional pulse marker: set to a new timestamp whenever a fresh batch
   // of unique mainnet txs arrives. The engine paints a one-shot sweep.
   burstAt?: number;
+  // Raw mainnet tx-count delta between polls — drives phantom particles
+  // so canvas density honestly reflects real network throughput.
+  versionDelta?: number;
+  rendered?: number;
+  // Block tick — fires when blockHeight advances; powers heartbeat & flash.
+  blockTickAt?: number;
+  // Epoch progress 0..1 derived from chain epoch + ledger timestamp.
+  epochProgress?: number;
+  // Fired when a whale tx is detected (≥ threshold APT).
+  whaleAt?: number;
 }
 
 export interface FlowEngineHandle {
@@ -65,6 +87,11 @@ export function useFlowEngine({
   tps,
   speed,
   burstAt,
+  versionDelta,
+  rendered,
+  blockTickAt,
+  epochProgress,
+  whaleAt,
 }: Options): FlowEngineHandle {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const flowsRef = useRef<FlowState[]>([]);
@@ -81,6 +108,15 @@ export function useFlowEngine({
   const timeRef = useRef(0);
   const burstTimeRef = useRef<number>(0); // canvas-time when burst fired
   const lastBurstAtRef = useRef<number>(0);
+  const blockFlashTimeRef = useRef<number>(-10);
+  const lastBlockTickRef = useRef<number>(0);
+  const whaleFlashTimeRef = useRef<number>(-10);
+  const lastWhaleAtRef = useRef<number>(0);
+  const epochProgressRef = useRef<number>(0);
+  const phantomFieldRef = useRef(new PhantomField());
+  const gardenRef = useRef(new GardenBed());
+  const puddlesRef = useRef(new PuddleField());
+  const edgesRef = useRef(new EdgeMemory());
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
   const mousePosRef = useRef<{ x: number; y: number } | null>(null);
@@ -94,6 +130,7 @@ export function useFlowEngine({
   pausedRef.current = paused;
   tpsRef.current = tps;
   speedRef.current = speed;
+  if (typeof epochProgress === "number") epochProgressRef.current = epochProgress;
 
   // Trigger a sweep marker exactly when a new burst lands.
   useEffect(() => {
@@ -101,12 +138,36 @@ export function useFlowEngine({
     if (burstAt === lastBurstAtRef.current) return;
     lastBurstAtRef.current = burstAt;
     burstTimeRef.current = timeRef.current;
+    // Spawn phantom particles for the txs we know happened but didn't render.
+    const { w, h } = sizeRef.current;
+    if (w > 0 && h > 0 && versionDelta && rendered !== undefined) {
+      const gap = Math.max(0, versionDelta - rendered);
+      phantomFieldRef.current.spawn(gap, w, h);
+    }
   }, [burstAt]);
+
+  // Block tick → flash + heartbeat sweep.
+  useEffect(() => {
+    if (!blockTickAt || blockTickAt === lastBlockTickRef.current) return;
+    lastBlockTickRef.current = blockTickAt;
+    blockFlashTimeRef.current = timeRef.current;
+  }, [blockTickAt]);
+
+  // Whale tick → full-canvas vignette.
+  useEffect(() => {
+    if (!whaleAt || whaleAt === lastWhaleAtRef.current) return;
+    lastWhaleAtRef.current = whaleAt;
+    whaleFlashTimeRef.current = timeRef.current;
+  }, [whaleAt]);
 
   // Reset anchors when mode changes (positions are mode-dependent)
   useEffect(() => {
     anchorsRef.current.clear();
     flowsRef.current = [];
+    gardenRef.current.clear();
+    puddlesRef.current.clear();
+    edgesRef.current.clear();
+    phantomFieldRef.current.clear();
   }, [mode]);
 
   // Resize
@@ -202,6 +263,35 @@ export function useFlowEngine({
       if (flowsRef.current.length > cap) {
         flowsRef.current.splice(0, flowsRef.current.length - cap);
       }
+      // Mode-specific persistent state
+      if (modeRef.current === "garden") {
+        const arch = archetypeFor(tx);
+        const cv = tx.success === false ? "--destructive" : colorVarFor(arch);
+        const w = Math.min(1, Math.log10(1 + tx.amount) / 4);
+        const gas = Math.max(0, tx.gasCost);
+        const stemH = 28 + Math.min(60, Math.log10(1 + gas * 1e6) * 18);
+        gardenRef.current.plant({
+          x: dp.x,
+          y: dp.y,
+          arch,
+          colorVar: cv,
+          height: stemH,
+          weight: w,
+          bornAt: timeRef.current,
+          whale: !!tx.whale || tx.amount >= 1000,
+        });
+      } else if (modeRef.current === "rain") {
+        const arch = archetypeFor(tx);
+        const cv = tx.success === false ? "--destructive" : colorVarFor(arch);
+        const w = Math.min(1, Math.log10(1 + tx.amount) / 4);
+        // Schedule a splash slightly delayed (rain falls full height first)
+        // — we just queue immediately; the puddle field self-fades.
+        puddlesRef.current.splash(op.x, cv, w);
+      } else if (modeRef.current === "constellation") {
+        const arch = archetypeFor(tx);
+        const cv = tx.success === false ? "--destructive" : colorVarFor(arch);
+        edgesRef.current.add(origin.x, origin.y, dest.x, dest.y, cv, timeRef.current);
+      }
     }
   }, [transactions, mode]);
 
@@ -237,6 +327,15 @@ export function useFlowEngine({
 
       drawBackground(ctx, w, h, tpsRef.current, timeRef.current);
 
+      // Phantom particles — quiet motes for unrendered mainnet txs.
+      if (!pausedRef.current) phantomFieldRef.current.tick(dt);
+      phantomFieldRef.current.draw(ctx);
+
+      // Block-tick subtle flash (universal across modes).
+      drawBlockFlash(ctx, w, h, timeRef.current - blockFlashTimeRef.current);
+      // Epoch progress ring (top-right).
+      drawEpochRing(ctx, w, h, epochProgressRef.current);
+
       // One-shot horizontal sweep when a new poll burst arrives.
       const sinceBurst = timeRef.current - burstTimeRef.current;
       if (burstTimeRef.current > 0 && sinceBurst < 0.9) {
@@ -254,6 +353,16 @@ export function useFlowEngine({
       if (!pausedRef.current) {
         anchorsRef.current.tick(dt);
         anchorsRef.current.prune(60);
+        puddlesRef.current.tick(dt);
+      }
+
+      // Constellation persistent edges — drawn under flows.
+      if (m === "constellation") {
+        edgesRef.current.draw(ctx, timeRef.current);
+      }
+      // Garden bed — persistent flowers swaying.
+      if (m === "garden") {
+        gardenRef.current.draw(ctx, timeRef.current);
       }
 
       // Draw anchors (under flows)
@@ -267,6 +376,8 @@ export function useFlowEngine({
         }
         for (let i = 0; i < planets.length; i++) {
           drawPlanetCenter(planets[i], ctx, i, timeRef.current);
+          const label = labelForKey(planets[i].key);
+          if (label) drawPlanetLabel(ctx, planets[i], label);
         }
       } else if (m !== "rain") {
         for (const a of anchorsRef.current.values()) {
@@ -304,6 +415,17 @@ export function useFlowEngine({
         }
       }
       flowsRef.current = live;
+
+      // Rain puddles render on top of streaks.
+      if (m === "rain") {
+        puddlesRef.current.draw(ctx, h);
+      }
+      // Pulse mode: faint heartbeat sweep on each block.
+      if (m === "pulse") {
+        drawHeartbeat(ctx, w, h, timeRef.current - blockFlashTimeRef.current);
+      }
+      // Whale vignette (universal, drawn last so it sits above everything).
+      drawWhaleVignette(ctx, w, h, timeRef.current - whaleFlashTimeRef.current);
 
       // Hover
       let next: string | null = null;
