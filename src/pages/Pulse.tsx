@@ -8,6 +8,10 @@ import {
   Camera,
   ExternalLink,
   Zap,
+  BookOpen,
+  Waves,
+  Radio,
+  Activity,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -32,6 +36,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import aptosLogo from "@/assets/aptos-logo.png";
 
 const LEGEND: { label: string; cssVar: string }[] = [
