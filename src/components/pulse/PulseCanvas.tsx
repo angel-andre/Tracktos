@@ -1,7 +1,7 @@
 import { useCallback } from "react";
-import { useBloomEngine } from "./useBloomEngine";
+import { useFlowEngine } from "./useFlowEngine";
 import type { Transaction } from "@/hooks/useRealtimeTransactions";
-import type { Mode } from "./positioning";
+import type { Mode } from "./modes";
 
 interface Props {
   transactions: Transaction[];
@@ -9,6 +9,7 @@ interface Props {
   density: number;
   paused: boolean;
   tps: number;
+  speed: number;
   onSelect: (tx: Transaction | null) => void;
   registerSnapshot?: (fn: () => void) => void;
 }
@@ -19,10 +20,18 @@ export function PulseCanvas({
   density,
   paused,
   tps,
+  speed,
   onSelect,
   registerSnapshot,
 }: Props) {
-  const engine = useBloomEngine({ transactions, mode, density, paused, tps });
+  const engine = useFlowEngine({
+    transactions,
+    mode,
+    maxFlows: density,
+    paused,
+    tps,
+    speed,
+  });
 
   if (registerSnapshot) registerSnapshot(engine.snapshot);
 
@@ -33,10 +42,18 @@ export function PulseCanvas({
       const rect = c.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      const found = engine.getBloomAt(x, y);
-      onSelect(found ? found.tx : null);
+      const a = engine.getAnchorAt(x, y);
+      if (!a) {
+        onSelect(null);
+        return;
+      }
+      // Find a recent tx touching this anchor
+      const recent = transactions.find(
+        (t) => "src:" + t.sender === a.key || ("dst:" + t.sender === a.key),
+      );
+      onSelect(recent ?? null);
     },
-    [engine, onSelect],
+    [engine, onSelect, transactions],
   );
 
   return (

@@ -46,7 +46,8 @@ export default function PulsePage() {
   const { transactions, stats, isConnected } = useRealtimeTransactions();
   const [mode, setMode] = useState<Mode>("garden");
   const [paused, setPaused] = useState(false);
-  const [density, setDensity] = useState(250);
+  const [density, setDensity] = useState(40);
+  const [speed, setSpeed] = useState(1);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const snapshotRef = useRef<() => void>(() => {});
   const audio = useAudioEngine({ transactions, tps: stats.tps, mode });
@@ -142,6 +143,7 @@ export default function PulsePage() {
           density={density}
           paused={paused}
           tps={stats.tps}
+          speed={speed}
           onSelect={setSelected}
           registerSnapshot={(fn) => {
             snapshotRef.current = fn;
@@ -228,17 +230,32 @@ export default function PulsePage() {
           <div className="w-px h-5 bg-border/60" />
           <div className="flex items-center gap-2 min-w-[160px]">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              Density
+              Flows
             </span>
             <Slider
               value={[density]}
-              min={50}
-              max={500}
-              step={10}
+              min={10}
+              max={80}
+              step={5}
               onValueChange={(v) => setDensity(v[0])}
               className="w-24"
             />
             <span className="text-xs font-mono w-8 text-right">{density}</span>
+          </div>
+          <div className="w-px h-5 bg-border/60" />
+          <div className="flex items-center gap-2 min-w-[140px]">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+              Speed
+            </span>
+            <Slider
+              value={[Math.round(speed * 10)]}
+              min={5}
+              max={20}
+              step={1}
+              onValueChange={(v) => setSpeed(v[0] / 10)}
+              className="w-20"
+            />
+            <span className="text-xs font-mono w-9 text-right">{speed.toFixed(1)}×</span>
           </div>
           <div className="w-px h-5 bg-border/60" />
           <AudioControls
