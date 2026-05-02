@@ -183,6 +183,10 @@ export function useBloomEngine({
 
       // Tick + draw blooms
       const liveBlooms: BloomState[] = [];
+      const isMandala = modeRef.current === "mandala";
+      const mandalaSlices = 8;
+      const mcx = w / 2;
+      const mcy = h / 2;
       for (const b of bloomsRef.current) {
         if (!pausedRef.current) tickBloom(b, dt);
         const alive = aliveFrac(b);
@@ -192,7 +196,25 @@ export function useBloomEngine({
           const isHover =
             b.id === nextHovered ||
             (hoveredSender !== null && b.tx.sender === hoveredSender);
-          drawBloom(b, { ctx, hovered: isHover });
+          if (isMandala) {
+            const dx = b.x - mcx;
+            const dy = b.y - mcy;
+            const baseAngle = Math.atan2(dy, dx);
+            const radius = Math.hypot(dx, dy);
+            for (let i = 0; i < mandalaSlices; i++) {
+              const a = baseAngle + (i * Math.PI * 2) / mandalaSlices;
+              const mx = mcx + Math.cos(a) * radius;
+              const my = mcy + Math.sin(a) * radius;
+              const orig = { x: b.x, y: b.y };
+              b.x = mx;
+              b.y = my;
+              drawBloom(b, { ctx, hovered: isHover });
+              b.x = orig.x;
+              b.y = orig.y;
+            }
+          } else {
+            drawBloom(b, { ctx, hovered: isHover });
+          }
           liveBlooms.push(b);
         } else if (alive <= 0 && !offscreen) {
           // leave a scar
