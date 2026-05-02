@@ -591,7 +591,7 @@ export function drawBackground(
   w: number,
   h: number,
   _tps: number,
-  _time: number,
+  time: number,
 ) {
   // Trail wash — slightly stronger so old strokes clear
   ctx.fillStyle = cssVarHsl("--background", 0.32);
@@ -599,10 +599,50 @@ export function drawBackground(
 
   // Faint dot grid
   const spacing = 48;
-  ctx.fillStyle = cssVarHsl("--foreground", 0.04);
+  // Very low-frequency idle shimmer on the grid so the canvas reads
+  // "alive, listening" before the first burst lands. This is purely a
+  // background hint — capped well below visual noise threshold.
+  const shimmer = 0.03 + 0.012 * (0.5 + 0.5 * Math.sin(time * 0.4));
+  ctx.fillStyle = cssVarHsl("--foreground", shimmer);
   for (let x = spacing / 2; x < w; x += spacing) {
     for (let y = spacing / 2; y < h; y += spacing) {
       ctx.fillRect(x, y, 1, 1);
     }
   }
+}
+
+// Render a "planet" — a halo ring + bright nucleus around a hot anchor.
+// Used in Orbit mode to make top-K addresses look like gravitational
+// centers around which their txs visibly orbit.
+export function drawPlanetCenter(
+  a: Anchor,
+  ctx: CanvasRenderingContext2D,
+  rank: number, // 0 = hottest
+  time: number,
+) {
+  const intensity = Math.max(0.25, 1 - rank * 0.12);
+  const baseR = 4 + intensity * 5;
+  const breathe = 0.85 + 0.15 * Math.sin(time * 1.2 + rank);
+  const r = baseR * breathe;
+  // Outer halo
+  const haloR = r * 5;
+  const grad = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, haloR);
+  grad.addColorStop(0, cssVarHsl("--primary", 0.22 * intensity));
+  grad.addColorStop(0.5, cssVarHsl("--primary", 0.06 * intensity));
+  grad.addColorStop(1, cssVarHsl("--primary", 0));
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(a.x, a.y, haloR, 0, Math.PI * 2);
+  ctx.fill();
+  // Faint outer ring
+  ctx.strokeStyle = cssVarHsl("--primary", 0.18 * intensity);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(a.x, a.y, r * 2.4, 0, Math.PI * 2);
+  ctx.stroke();
+  // Nucleus
+  ctx.fillStyle = cssVarHsl("--foreground", 0.7 * intensity);
+  ctx.beginPath();
+  ctx.arc(a.x, a.y, r, 0, Math.PI * 2);
+  ctx.fill();
 }
