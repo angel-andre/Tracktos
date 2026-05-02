@@ -185,6 +185,8 @@ export interface FlowState {
   fade: number; // tail fade time after arrival
   curveK: number; // bezier curvature factor (-1..1)
   weight: number; // 0..1 visual weight (amount-based)
+  success: boolean; // tx.success — failed txs render distinctly
+  whale: boolean; // unusually large amount → bigger / haloed
 }
 
 export function createFlow(
@@ -199,7 +201,7 @@ export function createFlow(
     id: tx.hash,
     tx,
     arch,
-    colorVar: colorVarFor(arch),
+    colorVar: tx.success === false ? "--destructive" : colorVarFor(arch),
     origin,
     dest,
     age: 0,
@@ -207,6 +209,8 @@ export function createFlow(
     fade: 0.7,
     curveK: (hash32(tx.hash, 31) - 0.5) * 1.6,
     weight: w,
+    success: tx.success !== false,
+    whale: !!tx.whale || tx.amount >= 1000,
   };
 }
 
