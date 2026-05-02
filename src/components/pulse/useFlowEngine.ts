@@ -237,7 +237,9 @@ export function useFlowEngine({
 
     const cap = maxRef.current;
     const baseDur = mode === "rain" ? 3.2 : mode === "pulse" ? 2.2 : 2.6;
-    const dur = baseDur / Math.max(0.25, speedRef.current);
+    // Speed is applied in the render loop (f.age += dt * speed) so it
+    // affects in-flight flows too. Use the base duration here.
+    const dur = baseDur;
 
     for (const tx of edgeMap.values()) {
       const oKey = "src:" + tx.sender;
