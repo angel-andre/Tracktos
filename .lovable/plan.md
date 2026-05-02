@@ -1,53 +1,87 @@
-## Problem
 
-Right now every mode renders the same 6 archetype shapes (transfer line, swap petals, stake rings, NFT squares, **contract tree**, default circle). Mode only changes *where* and *how* blooms move — never *what they look like*. Because Contract is the most common Aptos tx type, its tree shape dominates every screen, making Garden, Stream, Spiral, Orbit, etc. all look like the same drifting forest.
+# Aptos Pulse — Clean Redesign
 
-## Goal
+Replace the busy 11-mode bloom system with a focused, premium 5-mode visualization where every transaction is a path from an **origin** to a **destination**, with one melodic tone per type. Calm, sparse, readable.
 
-Each mode should have an instantly recognizable visual identity. Archetype (tx type) should still influence color and subtle detail, but the **primary shape language is owned by the mode**.
+## Visual model
 
-## Mode → Visual Language
+Every transaction becomes a `Flow`: an animated arc/comet/streak from `origin → destination` over ~1.5–3s, then a short fade. No more persistent 12s blooms layering on top of each other.
 
-| Mode | Visual signature |
-|---|---|
-| Garden | Soft botanical blooms — concentric petals, organic & varied (current style, kept as the "default organic") |
-| Stream | Horizontal comet trails with leading dot + fading tail |
-| Constellation | Star points connected by thin lines to nearby blooms (k-nearest links) |
-| Spiral | Pinwheel arms — rotating multi-arm spokes scaled by gas |
-| Rain | Vertical glyph streaks (Matrix-style) with a bright head + ghost trail |
-| Orbit | Solid planet disc with a thin orbital ring + tiny moon dot |
-| Grid Pulse | Filled square cells that flash and decay (no inner shapes) |
-| Waveform | Tall thin vertical bars (oscilloscope sample), height = amount |
-| Fireworks | Rising spark + radial burst lines on explode phase |
-| Swarm | Small triangle "fish" oriented along velocity, with short motion trail |
-| Mandala | Angular polygon stars (mirrored 8x by the engine) |
+```text
+   origin ●━━━━━━━━━━━━━━━━━━ ➤ ● destination
+            comet head + tapering trail
+```
 
-Archetype still drives **color** (existing chart token mapping) and one small accent (e.g. a tiny inner symbol: dot for transfer, hex for swap, ring for stake, square for NFT, fork for contract) so tx type is still readable on hover/inspection — but it no longer defines the dominant silhouette.
+- Origin/destination derived from `tx.sender` and `tx.receiver` (fallback: hash) via stable hash → 2D coordinate. Same address → same anchor point, so a network shape emerges.
+- Anchors that recently received traffic become small **glowing nodes** that pulse on arrival, then fade.
+- Hard cap on simultaneous flows (e.g. 60). Excess transactions queue briefly, then drop oldest. High-TPS bursts are **batched** into a single brighter pulse on the same edge instead of stacking dozens of identical lines.
 
-## Technical Changes
+## The 5 modes
 
-**`src/components/pulse/blooms.ts`**
-- Replace the archetype-switch in `drawBloom` with a `mode`-switch that calls a per-mode renderer (`drawGarden`, `drawStream`, `drawConstellation`, `drawSpiral`, `drawRain`, `drawOrbit`, `drawGrid`, `drawWaveform`, `drawFireworks`, `drawSwarm`, `drawMandala`).
-- Add `mode: Mode` to `DrawCtx` (passed through from the engine).
-- Keep archetype color + add a small `drawArchetypeAccent(ctx, archetype, r)` helper used by renderers that want to surface tx type subtly.
-- For Fireworks, branch on `motion.phase` ("rise" → spark, "explode" → radial burst).
-- For Swarm, use `vx/vy` to orient a triangle.
-- Garden keeps a refined version of the current organic petal look so the "Garden" name still matches.
+All 5 share the origin→destination model; each interprets the path differently.
 
-**`src/components/pulse/useBloomEngine.ts`**
-- Pass `mode: modeRef.current` into `drawBloom` via `DrawCtx`.
-- Constellation: after drawing blooms, do one pass linking each bloom to its 1–2 nearest neighbors with a faint line (cheap O(n²) at current density caps).
-- Grid Pulse: render filled rounded-rect cells sized to the grid cell instead of bloom radius.
-- Waveform: render thin vertical bars anchored to canvas vertical center.
+1. **Constellation** — anchors are stars on a soft radial layout; flows are thin curved bezier arcs with a comet head. Faint persistent links between recently-active node pairs.
+2. **Garden** — anchors bloom briefly (small, 3–5 thin translucent petals, ~40px max) when a flow arrives. Flows are gentle curved stems connecting bloom to bloom. Sparse — max 1 active bloom per anchor.
+3. **Pulse Lines** — flows are clean horizontal/radial sine ripples emitted from the origin, expanding outward and dissipating. Destination glows when the wavefront reaches it.
+4. **Orbit** — top ~8 most-active addresses become orbital centers (sized by traffic). Flows are short light trails arcing between centers, satellites briefly orbiting the destination before fading.
+5. **Rain** — flows fall as soft vertical light streaks; x-position from sender hash, length from amount. Calm, atmospheric.
 
-**`src/components/pulse/positioning.ts`**
-- No structural change. Minor: in `waveform`, also store target `y` so the renderer can anchor bar height to vertical distance from center.
+Mode dropdown shows only these 5, grouped: **Network** (Constellation, Garden, Orbit), **Motion** (Pulse Lines, Rain).
 
-**Files NOT touched**
-- `modes.ts`, `AudioEngine.ts`, `useAudioEngine.ts`, `AudioControls.tsx`, `Pulse.tsx` — audio behavior and UI stay as they are.
+## Visual style refinements
 
-## Acceptance
+- Background: existing dark + subtle radial gradient + a faint dot grid (very low alpha) for spatial anchoring.
+- Palette: keep existing chart tokens (Aptos green/teal/amber/violet) but cap stroke alpha at ~0.7, glow alpha at ~0.05. Thin 1–1.5px lines.
+- Trails via per-frame background wash (already present) but slightly darker so old strokes clear faster → no buildup.
+- Easing: `easeInOutCubic` along the path, fade tail uses `easeOutQuart`.
+- No mandala mirroring, no boid swarms, no fireworks bursts, no per-bloom rotating petals.
 
-- Switching the dropdown produces a visibly different shape language each time, not just different motion of the same shapes.
-- The "tree" silhouette no longer appears in any mode (the contract tree shape is removed entirely; contract txs get the mode's shape + an optional small fork accent).
-- Hover still highlights same-sender blooms; click-to-inspect still works; performance stays smooth at the current density cap.
+## Audio refinements
+
+Keep `AudioEngine` foundation; tighten it:
+
+- **Per-type instrument** (overrides voice when "Auto"):
+  - Transfer → soft sine bell (current `bloom`)
+  - Swap → warm triangle+detuned saw pad (new `warm` voice)
+  - Stake → low sine + sub octave (new `deep` voice)
+  - NFT → plucked FM chime (current `crystal`, shorter decay)
+  - Contract → bright square+filter blip (current `pulse`, softer)
+  - Other → neutral soft sine
+- Scale: D minor pentatonic across all modes by default (mode can still override). Mode change → smooth scale crossfade.
+- **Stereo positioning**: pan from origin.x → -1..+1 via StereoPannerNode.
+- **Polyphony cap**: 6 simultaneous voices (down from 12). Within any 80ms window, dedupe identical pitch+type to one note.
+- **High-TPS ducking**: above 50 TPS, per-note gain scales down (1 → 0.4) so it stays musical, not noisy.
+- Existing reverb/compressor/ambient pad retained; pad gain reduced.
+
+## UI changes
+
+Bottom control bar adds:
+- **Animation Speed** slider (0.5×–2×, default 1×) — multiplies flow duration globally.
+- Density slider repurposed to **Max Flows** (10–80, default 40).
+- Mode dropdown reduced to 5 entries.
+- AudioControls unchanged (mute, volume, voice). Default starts muted (already does).
+
+Legend, Recent Blooms panel, header, snapshot button: kept as-is.
+
+## Technical plan
+
+New files:
+- `src/components/pulse/flows.ts` — `FlowState` type, `createFlow`, `tickFlow`, `drawFlow` per-mode renderers, anchor registry (`Anchor` map keyed by address with `x,y,lastHit,heat`).
+- `src/components/pulse/useFlowEngine.ts` — replaces `useBloomEngine`. Manages anchors map, flow array (capped), background grid render, per-mode draw dispatch, hover/click hit-testing against anchors.
+- New voice synths in `AudioEngine.ts`: `warm`, `deep`. Add `StereoPannerNode` per-note. Reduce polyphony cap, add TPS-based gain scaling, dedupe within 80ms.
+
+Edited files:
+- `src/components/pulse/modes.ts` — trim to 5 modes; each gets a `defaultInstrument` per archetype mapping (or rely on per-type override in audio engine). Remove unused icons/scales.
+- `src/components/pulse/positioning.ts` — replace per-mode spawn with `anchorFor(address, w, h, mode)` returning a stable point per address per mode (radial ring for Constellation, scattered grid for Garden, top-N orbit centers for Orbit, x-column for Rain, free for Pulse Lines).
+- `src/components/pulse/PulseCanvas.tsx` — swap to `useFlowEngine`.
+- `src/pages/Pulse.tsx` — trim mode list, add Animation Speed slider, rename Density → Max Flows, pass `speed` prop down.
+- `src/components/pulse/useAudioEngine.ts` — pass tx type → instrument override, pass tps for ducking, pass stereo pan from spawn x.
+
+Deleted (or left dormant):
+- `src/components/pulse/blooms.ts` and `useBloomEngine.ts` removed (replaced by flows engine).
+
+## Out of scope
+
+- API/data layer changes.
+- Globe page.
+- Mobile-specific layout overhaul (existing responsive header retained).
