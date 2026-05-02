@@ -166,7 +166,7 @@ export default function PulsePage() {
               </div>
             ))}
             <div className="pt-2 mt-2 border-t border-border/40 text-[10px] text-muted-foreground leading-relaxed">
-              Size = gas · Stroke = APT amount · Position = sender
+              {activeMode.description}
             </div>
           </CardContent>
         </Card>
