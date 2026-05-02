@@ -27,8 +27,19 @@ interface Options {
 export interface FlowEngineHandle {
   canvasRef: React.RefObject<HTMLCanvasElement>;
   hoveredId: string | null;
+  hoverInfo: HoverInfo | null;
   snapshot: () => void;
   getAnchorAt: (x: number, y: number) => Anchor | null;
+}
+
+export interface HoverInfo {
+  tx: Transaction;
+  // Screen position (CSS pixels relative to the canvas) where the
+  // hovered element currently is. Used to anchor a tooltip.
+  x: number;
+  y: number;
+  // Distance the cursor was from the matched element, for debug.
+  source: "flow" | "anchor";
 }
 
 function destKeyFor(tx: Transaction): string {
@@ -64,6 +75,7 @@ export function useFlowEngine({
   const speedRef = useRef(speed);
   const timeRef = useRef(0);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
   const mousePosRef = useRef<{ x: number; y: number } | null>(null);
 
   modeRef.current = mode;
@@ -235,21 +247,67 @@ export function useFlowEngine({
 
       // Hover
       let next: string | null = null;
+      let nextInfo: HoverInfo | null = null;
       if (mousePosRef.current) {
-        const a = getAnchorAt(mousePosRef.current.x, mousePosRef.current.y);
-        if (a) {
-          // surface most recent flow touching this anchor
-          for (let i = flowsRef.current.length - 1; i >= 0; i--) {
-            const f = flowsRef.current[i];
-            if (f.origin === a || f.dest === a) {
-              next = f.id;
-              break;
+        const mx = mousePosRef.current.x;
+        const my = mousePosRef.current.y;
+        // 1) Try to hit a live flow head/streak first — closest within radius.
+        let bestF: FlowState | null = null;
+        let bestFx = 0;
+        let bestFy = 0;
+        let bestD2 = 22 * 22;
+        for (let i = flowsRef.current.length - 1; i >= 0; i--) {
+          const f = flowsRef.current[i];
+          const p = currentFlowPoint(f, m, h);
+          const dx = mx - p.x;
+          const dy = my - p.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < bestD2) {
+            bestD2 = d2;
+            bestF = f;
+            bestFx = p.x;
+            bestFy = p.y;
+          }
+        }
+        if (bestF) {
+          next = bestF.id;
+          nextInfo = { tx: bestF.tx, x: bestFx, y: bestFy, source: "flow" };
+        } else {
+          // 2) Fall back to nearest anchor → most recent flow touching it.
+          const a = getAnchorAt(mx, my);
+          if (a) {
+            let recent: FlowState | null = null;
+            for (let i = flowsRef.current.length - 1; i >= 0; i--) {
+              const f = flowsRef.current[i];
+              if (f.origin === a || f.dest === a) {
+                recent = f;
+                break;
+              }
+            }
+            if (recent) {
+              next = recent.id;
+              nextInfo = { tx: recent.tx, x: a.x, y: a.y, source: "anchor" };
+            } else {
+              next = "anchor:" + a.key;
             }
           }
-          if (!next) next = "anchor:" + a.key;
         }
       }
       if (next !== hoveredId) setHoveredId(next);
+      // Update hover info (compare by tx hash to avoid re-render churn).
+      setHoverInfo((prev) => {
+        if (!nextInfo && !prev) return prev;
+        if (!nextInfo) return null;
+        if (
+          prev &&
+          prev.tx.hash === nextInfo.tx.hash &&
+          Math.abs(prev.x - nextInfo.x) < 1 &&
+          Math.abs(prev.y - nextInfo.y) < 1
+        ) {
+          return prev;
+        }
+        return nextInfo;
+      });
 
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -271,5 +329,45 @@ export function useFlowEngine({
   // suppress unused
   void hash32;
 
-  return { canvasRef, hoveredId, snapshot, getAnchorAt };
+  return { canvasRef, hoveredId, hoverInfo, snapshot, getAnchorAt };
+}
+
+// Re-derive a flow's current screen point from its parameters.
+// Mirrors the math in flows.ts so the hover layer stays in sync without
+// requiring the renderer to publish per-frame positions.
+function currentFlowPoint(
+  f: FlowState,
+  mode: Mode,
+  height: number,
+): { x: number; y: number } {
+  const travelT = Math.min(1, f.age / f.duration);
+  if (mode === "rain") {
+    const y = -20 + travelT * (height + 40);
+    return { x: f.origin.x, y };
+  }
+  if (mode === "pulse") {
+    // Ripple expands radially; pick a point on the ring toward the dest.
+    const dx = f.dest.x - f.origin.x;
+    const dy = f.dest.y - f.origin.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const r = travelT * dist;
+    return { x: f.origin.x + (dx / dist) * r, y: f.origin.y + (dy / dist) * r };
+  }
+  // Bezier (constellation / garden / orbit)
+  const u = travelT < 0.5 ? 4 * travelT * travelT * travelT : 1 - Math.pow(-2 * travelT + 2, 3) / 2;
+  const o = f.origin;
+  const d = f.dest;
+  const mx = (o.x + d.x) / 2;
+  const my = (o.y + d.y) / 2;
+  const ddx = d.x - o.x;
+  const ddy = d.y - o.y;
+  const px = -ddy * 0.35 * f.curveK;
+  const py = ddx * 0.35 * f.curveK;
+  const cx = mx + px;
+  const cy = my + py;
+  const it = 1 - u;
+  return {
+    x: it * it * o.x + 2 * it * u * cx + u * u * d.x,
+    y: it * it * o.y + 2 * it * u * cy + u * u * d.y,
+  };
 }
