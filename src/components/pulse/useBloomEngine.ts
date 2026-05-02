@@ -10,7 +10,8 @@ import {
   drawScar,
   cssVarHsl,
 } from "./blooms";
-import { type Mode, pickPosition } from "./positioning";
+import { pickSpawn } from "./positioning";
+import type { Mode } from "./modes";
 
 interface Options {
   transactions: Transaction[];
@@ -111,8 +112,8 @@ export function useBloomEngine({
     }
     // newest first → push in chronological so animation feels right
     fresh.reverse().forEach((tx) => {
-      const p = pickPosition(tx, modeRef.current, w, h);
-      bloomsRef.current.push(createBloom(tx, p.x, p.y, p.vx ?? 0, p.vy ?? 0));
+      const p = pickSpawn(tx, modeRef.current, w, h);
+      bloomsRef.current.push(createBloom(tx, p.x, p.y, p.vx, p.vy, p.motion));
     });
     // cap density
     const cap = densityRef.current;
