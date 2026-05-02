@@ -180,5 +180,4 @@ All colors MUST be HSL.
     to { transform: rotate(360deg); }
   }
   .animate-blob-spin { animation: blob-spin 40s linear infinite; }
-  }
 }
