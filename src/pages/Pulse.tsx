@@ -19,9 +19,18 @@ import {
   type Transaction,
 } from "@/hooks/useRealtimeTransactions";
 import { PulseCanvas } from "@/components/pulse/PulseCanvas";
-import type { Mode } from "@/components/pulse/positioning";
+import { MODES, MODE_BY_ID, GROUPS, type Mode } from "@/components/pulse/modes";
 import { useAudioEngine } from "@/components/pulse/useAudioEngine";
 import { AudioControls } from "@/components/pulse/AudioControls";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import aptosLogo from "@/assets/aptos-logo.png";
 
 const LEGEND: { label: string; cssVar: string }[] = [
@@ -33,12 +42,6 @@ const LEGEND: { label: string; cssVar: string }[] = [
   { label: "Other", cssVar: "--primary" },
 ];
 
-const MODES: { value: Mode; label: string }[] = [
-  { value: "garden", label: "Garden" },
-  { value: "stream", label: "Stream" },
-  { value: "constellation", label: "Constellation" },
-];
-
 export default function PulsePage() {
   const { transactions, stats, isConnected } = useRealtimeTransactions();
   const [mode, setMode] = useState<Mode>("garden");
@@ -46,7 +49,9 @@ export default function PulsePage() {
   const [density, setDensity] = useState(250);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const snapshotRef = useRef<() => void>(() => {});
-  const audio = useAudioEngine({ transactions, tps: stats.tps });
+  const audio = useAudioEngine({ transactions, tps: stats.tps, mode });
+  const activeMode = MODE_BY_ID[mode];
+  const ActiveIcon = activeMode.icon;
 
   const recent = transactions.slice(0, 5);
 
@@ -70,21 +75,37 @@ export default function PulsePage() {
             </h1>
           </div>
 
-          <div className="flex items-center gap-1 rounded-md border border-border/60 bg-card/40 p-0.5">
-            {MODES.map((m) => (
-              <button
-                key={m.value}
-                onClick={() => setMode(m.value)}
-                className={`text-xs px-3 py-1 rounded-sm transition-colors ${
-                  mode === m.value
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
+          <Select value={mode} onValueChange={(v) => setMode(v as Mode)}>
+            <SelectTrigger className="h-8 w-[200px] text-xs bg-card/40 border-border/60">
+              <div className="flex items-center gap-2">
+                <ActiveIcon className="w-3.5 h-3.5 text-primary" />
+                <SelectValue placeholder="Visualization" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              {GROUPS.map((group) => {
+                const items = MODES.filter((m) => m.group === group);
+                return (
+                  <SelectGroup key={group}>
+                    <SelectLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {group}
+                    </SelectLabel>
+                    {items.map((m) => {
+                      const Icon = m.icon;
+                      return (
+                        <SelectItem key={m.id} value={m.id} className="text-xs">
+                          <div className="flex items-center gap-2">
+                            <Icon className="w-3.5 h-3.5" />
+                            <span>{m.label}</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectGroup>
+                );
+              })}
+            </SelectContent>
+          </Select>
 
           <div className="flex items-center gap-3 text-xs">
             <div className="flex items-center gap-1.5">
@@ -145,7 +166,7 @@ export default function PulsePage() {
               </div>
             ))}
             <div className="pt-2 mt-2 border-t border-border/40 text-[10px] text-muted-foreground leading-relaxed">
-              Size = gas · Stroke = APT amount · Position = sender
+              {activeMode.description}
             </div>
           </CardContent>
         </Card>

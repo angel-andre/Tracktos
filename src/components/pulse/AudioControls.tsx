@@ -1,18 +1,19 @@
 import { Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import type { Voice } from "./AudioEngine";
+import type { VoicePref } from "./useAudioEngine";
 
 interface Props {
   muted: boolean;
   volume: number;
-  voice: Voice;
+  voice: VoicePref;
   onToggleMute: () => void;
   onVolumeChange: (v: number) => void;
-  onVoiceChange: (v: Voice) => void;
+  onVoiceChange: (v: VoicePref) => void;
 }
 
-const VOICES: { value: Voice; label: string }[] = [
+const VOICES: { value: VoicePref; label: string }[] = [
+  { value: "auto", label: "Auto" },
   { value: "bloom", label: "Bloom" },
   { value: "crystal", label: "Crystal" },
   { value: "pulse", label: "Pulse" },
