@@ -1,14 +1,30 @@
 import type { Transaction } from "@/hooks/useRealtimeTransactions";
 import type { Mode } from "./modes";
 
-// Resolve an HSL CSS variable to "hsl(H S% L% / a)".
+// Resolve an HSL CSS variable to "hsl(H S% L% / a)" with caching.
+// `getComputedStyle` is expensive when called hundreds of times per frame;
+// the raw HSL triple rarely changes, so we cache it and invalidate on
+// theme switches (callers can call cssVarBust()).
+const _hslCache: Map<string, string> = new Map();
+export function cssVarBust() {
+  _hslCache.clear();
+}
+function rawHsl(varName: string): string {
+  const cached = _hslCache.get(varName);
+  if (cached !== undefined) return cached;
+  if (typeof window === "undefined") {
+    _hslCache.set(varName, "0 0% 50%");
+    return "0 0% 50%";
+  }
+  const raw =
+    getComputedStyle(document.documentElement)
+      .getPropertyValue(varName)
+      .trim() || "0 0% 50%";
+  _hslCache.set(varName, raw);
+  return raw;
+}
 export function cssVarHsl(varName: string, alpha = 1): string {
-  if (typeof window === "undefined") return `hsl(0 0% 50% / ${alpha})`;
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue(varName)
-    .trim();
-  if (!raw) return `hsl(0 0% 50% / ${alpha})`;
-  return `hsl(${raw} / ${alpha})`;
+  return `hsl(${rawHsl(varName)} / ${alpha})`;
 }
 
 export type Archetype =
