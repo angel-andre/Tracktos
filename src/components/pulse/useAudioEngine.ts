@@ -48,7 +48,9 @@ export function useAudioEngine({ transactions, mode, lastBurst }: Options) {
     engineRef.current.setVolume(volume);
     engineRef.current.setVoice(effectiveVoice);
     engineRef.current.setScale(def.scale);
-    engineRef.current.setQuantize(null);
+    // Quantize chimes to a slow musical grid by default — keeps the
+    // generative output melodic rather than clicky.
+    engineRef.current.setQuantize(0.24);
     engineRef.current.setChordSize(1);
     engineRef.current.setPerTypeVoice(voicePref === "auto");
     engineRef.current.setMuted(muted);
@@ -90,7 +92,7 @@ export function useAudioEngine({ transactions, mode, lastBurst }: Options) {
     if (!eng) return;
     eng.setVoice(effectiveVoice);
     eng.setScale(def.scale);
-    eng.setQuantize(null);
+    eng.setQuantize(0.24);
     eng.setChordSize(1);
     eng.setPerTypeVoice(voicePref === "auto");
   }, [mode, effectiveVoice, def.scale, voicePref]);

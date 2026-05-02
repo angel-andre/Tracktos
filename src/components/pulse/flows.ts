@@ -611,6 +611,351 @@ export function drawBackground(
   }
 }
 
+// ============== Phantom particles ==============
+// Light, hash-less micro-dots derived from the gap between mainnet's
+// versionDelta and the txs we actually rendered. Their *count* is real;
+// we just don't have hashes for them, so they render as quiet motes that
+// make canvas density honestly reflect network throughput.
+
+export interface PhantomParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  age: number;
+  life: number;
+}
+
+export class PhantomField {
+  private parts: PhantomParticle[] = [];
+  private cap = 220;
+
+  spawn(count: number, w: number, h: number) {
+    if (count <= 0) return;
+    // Cap so a huge backlog doesn't crush the field; keep things calm.
+    const n = Math.min(count, 80);
+    for (let i = 0; i < n; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 8 + Math.random() * 22;
+      this.parts.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        age: 0,
+        life: 0.9 + Math.random() * 1.4,
+      });
+    }
+    if (this.parts.length > this.cap) {
+      this.parts.splice(0, this.parts.length - this.cap);
+    }
+  }
+
+  tick(dt: number) {
+    const live: PhantomParticle[] = [];
+    for (const p of this.parts) {
+      p.age += dt;
+      if (p.age >= p.life) continue;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      live.push(p);
+    }
+    this.parts = live;
+  }
+
+  draw(ctx: CanvasRenderingContext2D) {
+    for (const p of this.parts) {
+      const t = p.age / p.life;
+      const a = Math.max(0, 0.32 * (1 - t));
+      ctx.fillStyle = cssVarHsl("--foreground", a);
+      ctx.fillRect(p.x, p.y, 1.2, 1.2);
+    }
+  }
+
+  clear() {
+    this.parts = [];
+  }
+}
+
+// ============== Garden bed (persistent flowers) ==============
+
+export interface PlantedFlower {
+  x: number;
+  y: number;
+  arch: Archetype;
+  colorVar: string;
+  height: number; // stem max height in px
+  weight: number;
+  bornAt: number; // canvas time
+  whale: boolean;
+}
+
+export class GardenBed {
+  private flowers: PlantedFlower[] = [];
+  private cap = 140;
+
+  plant(f: PlantedFlower) {
+    this.flowers.push(f);
+    if (this.flowers.length > this.cap) this.flowers.shift();
+  }
+
+  draw(ctx: CanvasRenderingContext2D, time: number) {
+    for (const fl of this.flowers) {
+      const age = time - fl.bornAt;
+      // Sway in a gentle breeze; older flowers fade slightly.
+      const sway = Math.sin(age * 1.2 + fl.x * 0.05) * 2.5;
+      const fade = Math.max(0.35, 1 - age / 90); // visible ~90s
+      const baseY = fl.y;
+      const stemH = fl.height;
+      ctx.strokeStyle = cssVarHsl(fl.colorVar, 0.28 * fade);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(fl.x, baseY);
+      ctx.quadraticCurveTo(fl.x + sway * 0.5, baseY - stemH / 2, fl.x + sway, baseY - stemH);
+      ctx.stroke();
+      const petals =
+        fl.arch === "swap" ? 6
+        : fl.arch === "nft" ? 4
+        : fl.arch === "stake" ? 8
+        : fl.arch === "contract" ? 3
+        : 5;
+      const r = (3 + fl.weight * 5) * (fl.whale ? 1.6 : 1);
+      const tipX = fl.x + sway;
+      const tipY = baseY - stemH;
+      ctx.save();
+      ctx.translate(tipX, tipY);
+      ctx.fillStyle = cssVarHsl(fl.colorVar, 0.55 * fade);
+      for (let i = 0; i < petals; i++) {
+        const a = (i / petals) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.ellipse(Math.cos(a) * r * 0.6, Math.sin(a) * r * 0.6, r * 0.55, r * 0.22, a, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = cssVarHsl(fl.colorVar, 0.85 * fade);
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  clear() {
+    this.flowers = [];
+  }
+}
+
+// ============== Rain puddles ==============
+
+export interface Puddle {
+  x: number;
+  age: number;
+  colorVar: string;
+  weight: number;
+}
+
+export class PuddleField {
+  private puddles: Puddle[] = [];
+  private cap = 60;
+
+  splash(x: number, colorVar: string, weight: number) {
+    this.puddles.push({ x, age: 0, colorVar, weight });
+    if (this.puddles.length > this.cap) this.puddles.shift();
+  }
+
+  tick(dt: number) {
+    const live: Puddle[] = [];
+    for (const p of this.puddles) {
+      p.age += dt;
+      if (p.age < 1.6) live.push(p);
+    }
+    this.puddles = live;
+  }
+
+  draw(ctx: CanvasRenderingContext2D, h: number) {
+    for (const p of this.puddles) {
+      const t = p.age / 1.6;
+      const r = 6 + t * 36 + p.weight * 10;
+      const a = (1 - t) * 0.45;
+      ctx.strokeStyle = cssVarHsl(p.colorVar, a);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(p.x, h - 10, r, r * 0.32, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  clear() {
+    this.puddles = [];
+  }
+}
+
+// ============== Constellation persistent edges ==============
+
+export interface PersistEdge {
+  ax: number; ay: number;
+  bx: number; by: number;
+  bornAt: number;
+  colorVar: string;
+}
+
+export class EdgeMemory {
+  private edges: PersistEdge[] = [];
+  private cap = 80;
+  private lifetime = 45; // seconds
+
+  add(ax: number, ay: number, bx: number, by: number, colorVar: string, time: number) {
+    this.edges.push({ ax, ay, bx, by, bornAt: time, colorVar });
+    if (this.edges.length > this.cap) this.edges.shift();
+  }
+
+  draw(ctx: CanvasRenderingContext2D, time: number) {
+    const live: PersistEdge[] = [];
+    for (const e of this.edges) {
+      const age = time - e.bornAt;
+      if (age >= this.lifetime) continue;
+      const a = (1 - age / this.lifetime) * 0.22;
+      ctx.strokeStyle = cssVarHsl(e.colorVar, a);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(e.ax, e.ay);
+      ctx.lineTo(e.bx, e.by);
+      ctx.stroke();
+      live.push(e);
+    }
+    this.edges = live;
+  }
+
+  clear() {
+    this.edges = [];
+  }
+}
+
+// ============== Pulse mode heartbeat line ==============
+// A faint horizontal sweep that ticks every time a new block lands.
+
+export function drawHeartbeat(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  sinceBlock: number,
+) {
+  if (sinceBlock < 0 || sinceBlock > 1.4) return;
+  const t = sinceBlock / 1.4;
+  const y = h * 0.5;
+  const x = t * w;
+  ctx.strokeStyle = cssVarHsl("--primary", 0.18 * (1 - t));
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, y);
+  ctx.lineTo(x - 30, y);
+  ctx.lineTo(x - 18, y - 12);
+  ctx.lineTo(x - 6, y + 16);
+  ctx.lineTo(x, y);
+  ctx.lineTo(w, y);
+  ctx.stroke();
+}
+
+// ============== Epoch progress ring ==============
+
+export function drawEpochRing(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  progress: number, // 0..1
+) {
+  if (!isFinite(progress) || progress < 0) return;
+  const cx = w - 28;
+  const cy = 28;
+  const r = 14;
+  ctx.strokeStyle = cssVarHsl("--foreground", 0.12);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = cssVarHsl("--primary", 0.85);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+  ctx.stroke();
+}
+
+// ============== Block-tick flash (full-screen subtle vignette) ==============
+
+export function drawBlockFlash(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  sinceBlock: number,
+) {
+  if (sinceBlock < 0 || sinceBlock > 0.6) return;
+  const t = sinceBlock / 0.6;
+  const a = (1 - t) * 0.08;
+  const grad = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.7);
+  grad.addColorStop(0, cssVarHsl("--primary", 0));
+  grad.addColorStop(1, cssVarHsl("--primary", a));
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+}
+
+// ============== Whale moment (rare, dramatic full-canvas pulse) ==============
+
+export function drawWhaleVignette(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  sinceWhale: number,
+) {
+  if (sinceWhale < 0 || sinceWhale > 2.2) return;
+  const t = sinceWhale / 2.2;
+  // Two overlapping radial pulses for richness.
+  const a1 = Math.sin(t * Math.PI) * 0.22;
+  const grad = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.85);
+  grad.addColorStop(0, cssVarHsl("--primary", a1 * 0.6));
+  grad.addColorStop(0.4, cssVarHsl("--primary", a1 * 0.3));
+  grad.addColorStop(1, cssVarHsl("--primary", 0));
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+  // Border glow
+  ctx.strokeStyle = cssVarHsl("--primary", a1 * 0.9);
+  ctx.lineWidth = 2;
+  ctx.strokeRect(2, 2, w - 4, h - 4);
+}
+
+// ============== Known address dictionary (for Orbit "named planets") ==============
+
+const KNOWN_MODULES: Record<string, string> = {
+  "0x1::aptos_account": "Core",
+  "0x1::coin": "Coin",
+  "0x1::stake": "Stake",
+  "0x1::delegation_pool": "Delegation",
+  "0x3::token": "Tokens v1",
+  "0x4::token": "Tokens v2",
+};
+
+export function labelForKey(key: string): string | null {
+  // key is `module::fn` for destinations — match prefix.
+  for (const k in KNOWN_MODULES) {
+    if (key.startsWith(k)) return KNOWN_MODULES[k];
+  }
+  // Fall back to module name only if it's recognizable
+  const parts = key.split("::");
+  if (parts.length >= 2 && parts[1] && parts[1].length < 18) {
+    return parts[1];
+  }
+  return null;
+}
+
+export function drawPlanetLabel(
+  ctx: CanvasRenderingContext2D,
+  a: Anchor,
+  label: string,
+) {
+  ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
+  ctx.fillStyle = cssVarHsl("--foreground", 0.65);
+  ctx.textAlign = "center";
+  ctx.fillText(label, a.x, a.y + 28);
+}
+
 // Render a "planet" — a halo ring + bright nucleus around a hot anchor.
 // Used in Orbit mode to make top-K addresses look like gravitational
 // centers around which their txs visibly orbit.

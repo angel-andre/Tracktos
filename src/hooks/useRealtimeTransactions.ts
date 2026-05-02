@@ -52,6 +52,8 @@ export function useRealtimeTransactions() {
     ledgerVersion: string;
     blockHeight: string;
     at: number;
+    versionDelta: number; // raw mainnet tx count between polls
+    rendered: number; // how many of those we actually got hashes for
   } | null>(null);
   const [stats, setStats] = useState<TransactionStats>({
     tps: 0,
@@ -64,7 +66,16 @@ export function useRealtimeTransactions() {
   });
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Rolling 30s failure-rate window (from rendered txs).
+  const failureWindowRef = useRef<{ at: number; ok: boolean }[]>([]);
+  const [failureRate, setFailureRate] = useState(0);
+  // Last-seen block height — consumers can flash on change.
+  const [blockTick, setBlockTick] = useState<{ height: string; at: number } | null>(
+    null,
+  );
+  const lastBlockRef = useRef<string>("0");
   const lastVersionRef = useRef<string>("0");
+  const lastVersionNumRef = useRef<number>(0);
   
   // Track ledger versions over time to calculate accurate TPS
   const tpsHistoryRef = useRef<{ version: number; time: number }[]>([]);
@@ -137,6 +148,27 @@ export function useRealtimeTransactions() {
             return unique;
           });
 
+          // Update failure rolling window from this batch.
+          const nowMs = Date.now();
+          for (const tx of newTransactions) {
+            failureWindowRef.current.push({ at: nowMs, ok: tx.success !== false });
+          }
+          failureWindowRef.current = failureWindowRef.current.filter(
+            (e) => nowMs - e.at < 30_000,
+          );
+          const total = failureWindowRef.current.length;
+          const fails = failureWindowRef.current.filter((e) => !e.ok).length;
+          setFailureRate(total > 0 ? fails / total : 0);
+
+          // versionDelta = how many txs mainnet actually advanced since
+          // the previous poll. We render at most newTransactions.length
+          // of those — the rest become "phantom" particles in the UI.
+          const newestNum = parseInt(data.ledgerInfo?.ledgerVersion ?? "0");
+          const prevNum = lastVersionNumRef.current;
+          const versionDelta =
+            prevNum > 0 && newestNum > prevNum ? newestNum - prevNum : 0;
+          lastVersionNumRef.current = newestNum;
+
           // Publish a burst marker so the visual/audio layer can react to
           // the *moment* a batch of fresh, unique txs lands.
           setLastBurst({
@@ -144,6 +176,8 @@ export function useRealtimeTransactions() {
             ledgerVersion: data.ledgerInfo?.ledgerVersion ?? "0",
             blockHeight: data.ledgerInfo?.blockHeight ?? "0",
             at: Date.now(),
+            versionDelta,
+            rendered: newTransactions.length,
           });
         }
 
@@ -162,6 +196,13 @@ export function useRealtimeTransactions() {
           // Calculate TPS from ledger version changes (the real network throughput)
           updateTPS(data.ledgerInfo.ledgerVersion);
           
+          // Block tick — fires when blockHeight advances.
+          const bh = String(data.ledgerInfo.blockHeight ?? "0");
+          if (bh !== lastBlockRef.current && lastBlockRef.current !== "0") {
+            setBlockTick({ height: bh, at: Date.now() });
+          }
+          lastBlockRef.current = bh;
+
           setStats(prev => ({
             ...prev,
             latestVersion: data.ledgerInfo.ledgerVersion,
@@ -183,8 +224,8 @@ export function useRealtimeTransactions() {
     // Initial fetch
     fetchTransactions();
 
-    // Poll for new transactions every 3 seconds
-    const interval = setInterval(fetchTransactions, 3000);
+    // Poll faster on Pulse for higher visual fidelity. Edge fn caps at 100 txs.
+    const interval = setInterval(fetchTransactions, 1500);
 
     return () => {
       clearInterval(interval);
@@ -192,5 +233,5 @@ export function useRealtimeTransactions() {
     };
   }, [fetchTransactions]);
 
-  return { transactions, stats, isConnected, error, lastBurst };
+  return { transactions, stats, isConnected, error, lastBurst, failureRate, blockTick };
 }

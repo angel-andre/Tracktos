@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Zap,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -43,18 +44,119 @@ const LEGEND: { label: string; cssVar: string }[] = [
 ];
 
 export default function PulsePage() {
-  const { transactions, stats, isConnected, lastBurst } = useRealtimeTransactions();
+  const {
+    transactions,
+    stats,
+    isConnected,
+    lastBurst,
+    failureRate,
+    blockTick,
+  } = useRealtimeTransactions();
   const [mode, setMode] = useState<Mode>("garden");
   const [paused, setPaused] = useState(false);
   const [density, setDensity] = useState(40);
   const [speed, setSpeed] = useState(1);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const snapshotRef = useRef<() => void>(() => {});
+  const [whaleAt, setWhaleAt] = useState<number | undefined>();
+  const seenWhaleHashesRef = useRef<Set<string>>(new Set());
   const audio = useAudioEngine({ transactions, mode, lastBurst });
   const activeMode = MODE_BY_ID[mode];
   const ActiveIcon = activeMode.icon;
 
   const recent = transactions.slice(0, 5);
+
+  // Detect whale txs in incoming bursts and trigger a moment.
+  useEffect(() => {
+    if (!lastBurst) return;
+    for (const tx of lastBurst.txs) {
+      if (seenWhaleHashesRef.current.has(tx.hash)) continue;
+      if (tx.whale || tx.amount >= 1000) {
+        seenWhaleHashesRef.current.add(tx.hash);
+        setWhaleAt(Date.now());
+        toast(`Whale moved ${tx.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} APT`, {
+          description: `${tx.type} · ${tx.hash.slice(0, 10)}…`,
+          action: {
+            label: "Explorer",
+            onClick: () =>
+              window.open(
+                `https://explorer.aptoslabs.com/txn/${tx.hash}?network=mainnet`,
+                "_blank",
+              ),
+          },
+        });
+        break; // one toast per burst is plenty
+      }
+    }
+  }, [lastBurst]);
+
+  // Epoch progress — derived from ledger timestamp ticking inside a 2hr window.
+  // Aptos epochs are roughly 2 hours; we can't read epoch start here, so we
+  // approximate from epoch number changes: the ring fills as ledger time
+  // advances, resets visually when epoch increments.
+  const epochProgress = useMemo(() => {
+    const tsMicro = parseInt(stats.ledgerTimestamp || "0");
+    if (!tsMicro) return 0;
+    const tsMs = tsMicro / 1000;
+    const TWO_HOURS = 2 * 60 * 60 * 1000;
+    const within = tsMs % TWO_HOURS;
+    return within / TWO_HOURS;
+  }, [stats.ledgerTimestamp]);
+
+  // Snapshot with HUD watermark burned in.
+  const handleSnapshot = () => {
+    const inner = snapshotRef.current;
+    if (!inner) return;
+    // Locate the canvas element and draw an overlay before exporting.
+    const canvas = document.querySelector<HTMLCanvasElement>(
+      "canvas.cursor-crosshair",
+    );
+    if (!canvas) {
+      inner();
+      return;
+    }
+    // Build a composite image of canvas + watermark.
+    const out = document.createElement("canvas");
+    out.width = canvas.width;
+    out.height = canvas.height;
+    const ctx = out.getContext("2d");
+    if (!ctx) {
+      inner();
+      return;
+    }
+    ctx.drawImage(canvas, 0, 0);
+    // Watermark
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const pad = 16 * dpr;
+    const lh = 16 * dpr;
+    const lines = [
+      `Aptos Pulse · ${activeMode.label}`,
+      `Ledger ${Number(stats.latestVersion).toLocaleString()}`,
+      `Block ${Number(stats.blockHeight).toLocaleString()}  ·  ${stats.tps.toFixed(1)} TPS`,
+      `${new Date().toISOString()}`,
+      `tracktos.com`,
+    ];
+    ctx.font = `${11 * dpr}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    const maxW = Math.max(...lines.map((l) => ctx.measureText(l).width));
+    const boxW = maxW + pad * 2;
+    const boxH = lh * lines.length + pad;
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(out.width - boxW - pad, out.height - boxH - pad, boxW, boxH);
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    lines.forEach((line, i) => {
+      ctx.fillText(
+        line,
+        out.width - boxW - pad + pad,
+        out.height - boxH - pad + pad + (i + 0.4) * lh,
+      );
+    });
+    const url = out.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `aptos-pulse-${Date.now()}.png`;
+    a.click();
+    toast.success("Snapshot saved");
+  };
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
@@ -142,6 +244,11 @@ export default function PulsePage() {
           tps={stats.tps}
           speed={speed}
           lastBurst={lastBurst}
+          versionDelta={lastBurst?.versionDelta}
+          rendered={lastBurst?.rendered}
+          blockTickAt={blockTick?.at}
+          epochProgress={epochProgress}
+          whaleAt={whaleAt}
           onSelect={setSelected}
           registerSnapshot={(fn) => {
             snapshotRef.current = fn;
@@ -184,6 +291,20 @@ export default function PulsePage() {
               <div className="flex justify-between gap-2">
                 <span className="text-muted-foreground">TPS</span>
                 <span className="text-primary">{stats.tps.toFixed(1)}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">FAIL %</span>
+                <span
+                  className={
+                    failureRate > 0.15
+                      ? "text-destructive"
+                      : failureRate > 0.05
+                      ? "text-yellow-500"
+                      : "text-foreground"
+                  }
+                >
+                  {(failureRate * 100).toFixed(1)}%
+                </span>
               </div>
             </div>
           </CardContent>
@@ -238,7 +359,7 @@ export default function PulsePage() {
             variant="ghost"
             size="sm"
             className="h-8 gap-2"
-            onClick={() => snapshotRef.current?.()}
+            onClick={handleSnapshot}
           >
             <Camera className="w-3.5 h-3.5" />
             <span className="text-xs">Snapshot</span>

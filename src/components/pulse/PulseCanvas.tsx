@@ -13,6 +13,11 @@ interface Props {
   lastBurst: { txs: Transaction[]; ledgerVersion: string; at: number } | null;
   onSelect: (tx: Transaction | null) => void;
   registerSnapshot?: (fn: () => void) => void;
+  versionDelta?: number;
+  rendered?: number;
+  blockTickAt?: number;
+  epochProgress?: number;
+  whaleAt?: number;
 }
 
 export function PulseCanvas({
@@ -25,6 +30,11 @@ export function PulseCanvas({
   lastBurst,
   onSelect,
   registerSnapshot,
+  versionDelta,
+  rendered,
+  blockTickAt,
+  epochProgress,
+  whaleAt,
 }: Props) {
   const engine = useFlowEngine({
     transactions,
@@ -34,6 +44,11 @@ export function PulseCanvas({
     tps,
     speed,
     burstAt: lastBurst?.at,
+    versionDelta,
+    rendered,
+    blockTickAt,
+    epochProgress,
+    whaleAt,
   });
 
   if (registerSnapshot) registerSnapshot(engine.snapshot);
