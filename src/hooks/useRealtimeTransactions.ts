@@ -14,6 +14,7 @@ export interface Transaction {
   function: string;
   sequenceNumber: string;
   proposer: string | null; // The validator address that proposed the block
+  whale?: boolean; // True for unusually large APT movements
 }
 
 export interface LedgerInfo {
@@ -100,7 +101,7 @@ export function useRealtimeTransactions() {
   const fetchTransactions = useCallback(async () => {
     try {
       const { data, error: fetchError } = await supabase.functions.invoke('aptos-transactions', {
-        body: { limit: 25 },
+        body: { limit: 50 },
       });
 
       if (fetchError) {
