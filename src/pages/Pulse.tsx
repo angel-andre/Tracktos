@@ -34,14 +34,14 @@ const LEGEND: { label: string; cssVar: string }[] = [
 ];
 
 const MODES: { value: Mode; label: string }[] = [
-  { value: "garden", label: "Garden" },
-  { value: "stream", label: "Stream" },
-  { value: "constellation", label: "Constellation" },
+  { value: "flow", label: "Flow" },
+  { value: "ledger", label: "Ledger" },
+  { value: "swarm", label: "Swarm" },
 ];
 
 export default function PulsePage() {
   const { transactions, stats, isConnected } = useRealtimeTransactions();
-  const [mode, setMode] = useState<Mode>("garden");
+  const [mode, setMode] = useState<Mode>("flow");
   const [paused, setPaused] = useState(false);
   const [density, setDensity] = useState(250);
   const [selected, setSelected] = useState<Transaction | null>(null);
@@ -145,7 +145,9 @@ export default function PulsePage() {
               </div>
             ))}
             <div className="pt-2 mt-2 border-t border-border/40 text-[10px] text-muted-foreground leading-relaxed">
-              Size = gas · Stroke = APT amount · Position = sender
+              {mode === "flow" && "Arcs = sender → validator. Outer ring = validators."}
+              {mode === "ledger" && "Bands = blocks. Speed = TPS. Dot size = gas."}
+              {mode === "swarm" && "Nodes = wallets. Petals = tx types. Size = activity."}
             </div>
           </CardContent>
         </Card>

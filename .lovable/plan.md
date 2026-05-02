@@ -1,98 +1,72 @@
-# Add Sonification to Aptos Pulse
+## Goal
 
-Give every Aptos transaction on the `/pulse` page a sound, turning the visualizer into an ambient audiovisual instrument. Each new "bloom" plays a short musical note synthesized in the browser — no external audio files, no new dependencies.
+Replace the current abstract Garden / Stream / Constellation modes on `/pulse` with three visualizations that actually express what's happening on Aptos: wallets sending transactions, validators producing blocks, and the chain advancing version by version. Keep the artistic, audio-reactive feel — but make every shape map to something real.
 
-## Design Concept
+## What's wrong with the current modes
 
-The visuals already map transaction properties to shape, color, size, and position. We extend that mapping into the audio domain so visuals and music feel like one instrument:
+- Garden / Stream / Constellation all just position blooms by a hash. Nothing connects to anything else.
+- There is no sense of *flow* (who sent → who included it), no sense of *blocks*, and no sense of *wallets repeating activity*.
+- A viewer can't tell a swap from a transfer except by color, and there's no relational structure on screen.
 
-| Transaction property | Sound parameter |
-|---|---|
-| Transaction type (Transfer / Swap / Stake / NFT / Contract / Other) | Timbre (which voice / oscillator preset) |
-| Gas cost | Note duration + reverb send (heavier tx = longer, more spacious) |
-| APT amount | Note velocity (louder for bigger transfers, log-scaled) |
-| Sender hash | Pitch within a fixed musical scale (deterministic, so the same wallet always plays the same note) |
-| TPS (network throughput) | Background ambient pad volume + filter brightness |
+## The three new visualizations
 
-All notes are quantized to a **D minor pentatonic scale across 3 octaves** so anything that plays sounds harmonically pleasing, no matter the transaction order or rate. Voices are gentle (sine + triangle + soft pluck), not chiptune — closer to a generative ambient piece like Brian Eno's Music for Airports than an arcade.
+### 1. Flow — "Senders → Validators"
 
-## User-Facing Changes
+A radial diagram. Active **validators (proposers)** sit on an outer ring around the canvas. **Sender wallets** appear as small nodes drifting in the interior. Each new transaction draws an animated arc from its sender node to the validator that included it, with a particle traveling along the arc. The arc fades over ~3 seconds, leaving a faint trail. Validator nodes pulse and grow brighter the more transactions they include in the visible window.
 
-A small audio control cluster is added to the existing bottom control bar on `/pulse`:
+```text
+        validator
+       /    |    \
+      /     |     \
+     /   . sender  \
+    /   .  arc    . \
+   validator -- validator
+```
 
-- **Mute / Unmute toggle** (speaker icon) — audio starts **muted by default** so the page never autoplays sound (browser policy + courtesy).
-- **Volume slider** (0–100%).
-- **Voice selector** — three presets the user can switch between live:
-  - `Bloom` (default): soft sine pads with pluck attacks
-  - `Crystal`: bright bell-like FM tones
-  - `Pulse`: short percussive blips, more rhythmic
-- **Tooltip / first-run hint**: a one-line caption "Click the speaker to hear the network" appears under the mute button until the user toggles it once.
+What it shows: the real producer/consumer relationship of the chain. Who's busy. Which validators are doing the work right now.
 
-No layout breaks on mobile — the control bar already wraps; audio buttons join the existing pause / snapshot / density cluster.
+### 2. Ledger — "Live Block Stream"
 
-## Technical Implementation
+A horizontal river flowing right-to-left. New transactions enter as small shapes on the right, grouped into "block bands" by their block proposer (transactions sharing a proposer arrive as a cluster). Each block band drifts leftward at a speed proportional to current TPS. The current `blockHeight` and `epoch` are rendered as quiet markers along the top edge. As blocks exit the left edge they dissolve into the background wash.
 
-**No new dependencies.** Use the native Web Audio API (`AudioContext`). Tone.js was considered but adds ~80kb gzipped for features we don't need; a hand-rolled synth is ~150 lines and gives us total control.
+What it shows: the literal forward motion of the chain. You see TPS as river speed, you see block composition (lots of swaps vs lots of transfers) as color density inside each band.
 
-### New files
+### 3. Swarm — "Wallet Constellations"
 
-1. **`src/components/pulse/AudioEngine.ts`** — core synth
-   - Singleton-ish class wrapping an `AudioContext`
-   - Master chain: `masterGain → compressor → convolver (reverb) → destination`
-   - Reverb impulse generated procedurally on init (no asset file)
-   - Public API:
-     - `init()` — lazily creates `AudioContext` on first user gesture (required by browsers)
-     - `setMuted(bool)`, `setVolume(0..1)`, `setVoice('bloom'|'crystal'|'pulse')`
-     - `playTransaction(tx: Transaction)` — schedules one note based on the mapping table above
-     - `setAmbientLevel(tps: number)` — drives a low background pad whose filter cutoff and gain track TPS
-     - `dispose()`
-   - Voice synthesis: each voice is 1–2 oscillators + ADSR gain envelope + per-voice filter; `crystal` uses a 2-op FM pair; `pulse` uses a very short envelope on a square + lowpass.
-   - Pitch selection: hash the sender address → index into the pentatonic scale array → MIDI note → frequency. Deterministic per wallet.
-   - Voice pool / throttle: cap simultaneous voices at 12 and drop the oldest; if more than ~8 transactions arrive in the same frame, only sonify the loudest (highest amount) ones to avoid mud.
+Sender addresses become persistent nodes — the same wallet always lands at the same spot (deterministic from address hash). Each new transaction from that wallet pulses its node and adds a short edge to a small cluster of **type satellites** (Transfer, Swap, Stake, NFT, Contract) arranged around it. Wallets that transact more often grow larger and brighter; idle wallets fade. Hovering a wallet highlights all its activity.
 
-2. **`src/components/pulse/useAudioEngine.ts`** — React glue
-   - Owns the `AudioEngine` instance via `useRef`
-   - Exposes `{ muted, setMuted, volume, setVolume, voice, setVoice, ready }`
-   - Watches `transactions` array — for each newly seen tx hash (mirrors the existing `seenRef` pattern from `useBloomEngine`), calls `playTransaction(tx)`
-   - Watches `tps` — calls `setAmbientLevel(tps)` on change
-   - Cleans up on unmount
+What it shows: who the active participants are, what kinds of things they do, and how concentrated activity is across the network.
 
-3. **`src/components/pulse/AudioControls.tsx`** — UI
-   - Renders the mute button, volume slider, and voice select dropdown
-   - Uses existing shadcn `Button`, `Slider`, and a small inline `Select` (or `ToggleGroup`) — all already in the project
+## Technical details
 
-### Modified files
+### Data we have (from `useRealtimeTransactions`)
+- `sender`, `proposer` (validator), `type`, `amount`, `gasCost`, `success`, `version`, `hash`
+- `stats.tps`, `stats.blockHeight`, `stats.epoch`
 
-- **`src/pages/Pulse.tsx`**
-  - Call `useAudioEngine({ transactions, tps: stats.tps })`
-  - Render `<AudioControls ... />` inside the existing bottom control bar, right after the snapshot button
-  - On the first unmute click, call `engine.init()` (satisfies the user-gesture requirement)
+We do **not** have an explicit recipient address — so "Flow" uses sender→validator (which is real and meaningful), not sender→receiver.
 
-- **`src/components/pulse/useBloomEngine.ts`** — *no changes needed*. The audio engine independently watches the same `transactions` prop, so visuals and audio stay decoupled and trivially testable. Both use the same "newly seen hash" detection so they fire in lockstep.
+### Files to change
+- **`src/components/pulse/positioning.ts`** — replace `Mode` type with `"flow" | "ledger" | "swarm"`. Add deterministic `validatorRingPosition`, `walletAnchorPosition`, and `blockLanePosition` helpers.
+- **`src/components/pulse/blooms.ts`** — keep archetype shapes for reuse, add a new `Edge` primitive (animated arc with traveling particle) and a `WalletNode` primitive (persistent pulsing node sized by activity count).
+- **`src/components/pulse/useBloomEngine.ts`** — branch render logic by mode:
+  - `flow`: maintain a `Map<proposer, RingSlot>` and a transient `Edge[]` list. On each new tx, push an edge from sender position to its validator slot.
+  - `ledger`: maintain `BlockBand[]` keyed by proposer; each band has an `x` that decreases over time at `speed = 40 + tps * 2 px/s`. Group incoming txs sharing a proposer within a 1.5s window into the same band.
+  - `swarm`: maintain `Map<sender, WalletNode>` with `activityCount`, `lastSeen`, and `typeCounts`. New txs increment counts and spawn a short pulse + satellite mark. Decay nodes whose `lastSeen` is older than 30s.
+- **`src/pages/Pulse.tsx`** — update `MODES` array to `Flow / Ledger / Swarm`, update Legend card text to explain the new mappings ("Arcs = sender→validator", "Bands = blocks", "Nodes = wallets").
+- **`src/components/pulse/useAudioEngine.ts`** — no change needed; it already keys on transaction events, which all three modes still emit.
 
-### Browser autoplay & safety
-
-- `AudioContext` is created only after the first user click on the unmute button.
-- The mute state persists to `localStorage` under `pulse:audio:muted` so returning users don't get surprised.
-- A hard-limit `DynamicsCompressorNode` and a `-6 dBFS` master ceiling prevent painful peaks even if dozens of transactions land at once.
+### Audio integration
+The existing audio engine fires per-transaction. All three new modes consume the same `transactions` stream, so audio keeps working unchanged across modes.
 
 ### Performance
+- Flow: cap concurrent edges at ~80 (FIFO eviction). Edges live ~3s.
+- Ledger: cap visible blocks at ~30; off-screen blocks are dropped.
+- Swarm: cap wallet nodes at 200 (drop least-recently-active). Type satellites are drawn as part of the parent node, not separate objects.
 
-- One `AudioContext` for the whole page, reused across mode switches.
-- Notes are scheduled with `setTargetAtTime` envelopes — no per-frame work, so this adds essentially zero load to the existing `requestAnimationFrame` canvas loop.
-- When the page is hidden (`document.visibilityState === 'hidden'`), the engine suspends the `AudioContext` to save CPU.
+### What stays the same
+- Header, density slider (now controls "max active edges/nodes"), pause, snapshot, audio controls, recent feed, selected-tx detail card, color tokens (`--chart-*`), TPS-driven background breathing.
 
-## Out of Scope (can follow up later)
-
-- Recording / exporting the audio
-- MIDI export
-- Per-validator spatial panning (`constellation` mode could pan left/right by validator hash later)
-- Mobile gesture chord (long-press = sustained drone)
-
-## Acceptance
-
-- Visiting `/pulse` shows a new speaker icon in the bottom bar; page is silent until clicked.
-- Clicking unmute starts a soft ambient pad and each new transaction plays a short musical note.
-- Switching voice presets changes timbre live without glitching.
-- Muting fully silences output; refreshing the page remembers the muted state.
-- No console errors, no new dependencies in `package.json`.
+## Out of scope
+- No new data fetching — purely a rendering rework on existing data.
+- No backend/edge-function changes.
+- No changes to Globe page.
