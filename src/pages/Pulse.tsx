@@ -257,6 +257,127 @@ export default function PulsePage() {
                 Globe
               </Button>
             </Link>
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs gap-1.5 rounded-full glass-panel border-accent/40 hover:border-accent/60"
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-accent" />
+                  Methodology
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                side="right"
+                className="w-full sm:max-w-lg overflow-y-auto glass-panel border-l border-border/60"
+              >
+                <SheetHeader className="text-left space-y-2">
+                  <div className="inline-flex items-center gap-2 self-start glass-panel rounded-full px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                    How Pulse works
+                  </div>
+                  <SheetTitle className="text-2xl">
+                    <span className="text-gradient-aptos">Methodology</span>
+                  </SheetTitle>
+                  <SheetDescription className="text-sm leading-relaxed">
+                    Aptos Pulse is a live audiovisual instrument played by the Aptos
+                    blockchain itself. Every shape, color, and note you see or hear is
+                    derived from a real on-chain event — nothing is simulated.
+                  </SheetDescription>
+                </SheetHeader>
+
+                <div className="mt-6 space-y-5 text-sm">
+                  {/* Data source */}
+                  <section className="glass-panel rounded-xl p-4 space-y-2">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "hsl(125 60% 88%)" }}>
+                        <Radio className="w-4 h-4" style={{ color: "hsl(125 50% 35%)" }} />
+                      </span>
+                      Where the data comes from
+                    </h3>
+                    <p className="text-muted-foreground leading-relaxed">
+                      A backend function polls the Aptos mainnet fullnode every
+                      <span className="text-foreground font-medium"> ~3 seconds</span>,
+                      pulling the latest committed transactions, ledger version,
+                      block height and epoch. Each batch is normalized into a
+                      typed transaction (Transfer, Swap, Stake, NFT, Contract,
+                      Other) along with amount, gas cost, sender and success status.
+                    </p>
+                  </section>
+
+                  {/* Visuals */}
+                  <section className="glass-panel rounded-xl p-4 space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "hsl(205 60% 88%)" }}>
+                        <Activity className="w-4 h-4" style={{ color: "hsl(205 70% 40%)" }} />
+                      </span>
+                      How the visuals are generated
+                    </h3>
+                    <p className="text-muted-foreground leading-relaxed">
+                      Each new transaction spawns a "flow" on the canvas. Its
+                      properties map directly to on-chain values:
+                    </p>
+                    <ul className="space-y-1.5 text-xs text-muted-foreground">
+                      <li className="flex gap-2"><span className="text-accent">●</span><span><span className="text-foreground font-medium">Color</span> — transaction type (see Legend)</span></li>
+                      <li className="flex gap-2"><span className="text-accent">●</span><span><span className="text-foreground font-medium">Size / brightness</span> — APT amount (whales bloom larger and trigger a moment)</span></li>
+                      <li className="flex gap-2"><span className="text-accent">●</span><span><span className="text-foreground font-medium">Lifetime</span> — gas cost & success state</span></li>
+                      <li className="flex gap-2"><span className="text-accent">●</span><span><span className="text-foreground font-medium">Density</span> — current network TPS</span></li>
+                      <li className="flex gap-2"><span className="text-accent">●</span><span><span className="text-foreground font-medium">Block tick</span> — pulses the canvas each new block</span></li>
+                    </ul>
+                    <p className="text-muted-foreground leading-relaxed text-xs pt-1">
+                      The visualization mode (Garden, Constellation, etc.) only
+                      changes the geometry and motion — the underlying data
+                      mapping stays identical, so what you see is always faithful
+                      to the chain.
+                    </p>
+                  </section>
+
+                  {/* Audio */}
+                  <section className="glass-panel rounded-xl p-4 space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "hsl(12 99% 90%)" }}>
+                        <Waves className="w-4 h-4" style={{ color: "hsl(12 80% 50%)" }} />
+                      </span>
+                      How the sounds are made
+                    </h3>
+                    <p className="text-muted-foreground leading-relaxed">
+                      Audio is synthesized live in your browser with the Web Audio
+                      API — no samples, no recordings. Each transaction triggers a
+                      short tone whose musical properties are derived from its data:
+                    </p>
+                    <ul className="space-y-1.5 text-xs text-muted-foreground">
+                      <li className="flex gap-2"><span className="text-accent">♪</span><span><span className="text-foreground font-medium">Pitch</span> — chosen from a pentatonic scale; transaction type selects the octave</span></li>
+                      <li className="flex gap-2"><span className="text-accent">♪</span><span><span className="text-foreground font-medium">Velocity / volume</span> — APT amount</span></li>
+                      <li className="flex gap-2"><span className="text-accent">♪</span><span><span className="text-foreground font-medium">Timbre</span> — selected "voice" (sine, pluck, bell, pad)</span></li>
+                      <li className="flex gap-2"><span className="text-accent">♪</span><span><span className="text-foreground font-medium">Tempo</span> — driven by network TPS; bursts feel busier</span></li>
+                      <li className="flex gap-2"><span className="text-accent">♪</span><span><span className="text-foreground font-medium">Whales</span> — trigger a low sub-bass swell</span></li>
+                    </ul>
+                    <p className="text-muted-foreground leading-relaxed text-xs pt-1">
+                      Notes are quantized to a shared key so the chain always
+                      sounds musical regardless of how chaotic mainnet activity
+                      gets.
+                    </p>
+                  </section>
+
+                  {/* Accuracy */}
+                  <section className="glass-panel rounded-xl p-4 space-y-2">
+                    <h3 className="font-semibold">Accuracy & honesty</h3>
+                    <p className="text-muted-foreground leading-relaxed text-xs">
+                      Every flow on screen is a real, verifiable transaction —
+                      click any "Recent Bloom" and follow the link to the Aptos
+                      Explorer to inspect it. The Speed and Flows sliders only
+                      affect rendering pacing and on-screen density; they never
+                      fabricate or reorder transactions.
+                    </p>
+                  </section>
+
+                  <p className="text-[10px] text-muted-foreground text-center pt-2">
+                    Data: Aptos mainnet fullnode · Audio: Web Audio API · Rendering: HTML5 Canvas
+                  </p>
+                </div>
+              </SheetContent>
+            </Sheet>
             <ThemeToggle />
           </div>
         </div>
