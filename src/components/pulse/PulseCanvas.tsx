@@ -10,6 +10,7 @@ interface Props {
   paused: boolean;
   tps: number;
   speed: number;
+  lastBurst: { txs: Transaction[]; ledgerVersion: string; at: number } | null;
   onSelect: (tx: Transaction | null) => void;
   registerSnapshot?: (fn: () => void) => void;
 }
@@ -21,6 +22,7 @@ export function PulseCanvas({
   paused,
   tps,
   speed,
+  lastBurst,
   onSelect,
   registerSnapshot,
 }: Props) {
@@ -31,6 +33,7 @@ export function PulseCanvas({
     paused,
     tps,
     speed,
+    burstAt: lastBurst?.at,
   });
 
   if (registerSnapshot) registerSnapshot(engine.snapshot);
@@ -81,6 +84,7 @@ export function PulseCanvas({
         onClick={handleClick}
         className="absolute inset-0 w-full h-full cursor-crosshair"
       />
+      <BurstChip burst={lastBurst} />
       {hover && (
         <HoverTooltip
           tx={hover.tx}
@@ -91,6 +95,43 @@ export function PulseCanvas({
         />
       )}
     </>
+  );
+}
+
+function BurstChip({
+  burst,
+}: {
+  burst: { txs: Transaction[]; ledgerVersion: string; at: number } | null;
+}) {
+  // Show for 1.6s after each burst.
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!burst) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 100);
+    const off = setTimeout(() => clearInterval(id), 1800);
+    return () => {
+      clearInterval(id);
+      clearTimeout(off);
+    };
+  }, [burst?.at]);
+  if (!burst) return null;
+  const age = now - burst.at;
+  if (age > 1600) return null;
+  const opacity = Math.max(0, 1 - age / 1600);
+  const ledger = Number(burst.ledgerVersion).toLocaleString();
+  return (
+    <div
+      className="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 z-20"
+      style={{ opacity }}
+    >
+      <div className="rounded-full border border-primary/40 bg-card/90 backdrop-blur-xl px-3 py-1.5 text-[11px] flex items-center gap-2 shadow-lg">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+        <span className="font-medium">+{burst.txs.length} txns</span>
+        <span className="text-muted-foreground">@ ledger</span>
+        <span className="font-mono text-primary">{ledger}</span>
+      </div>
+    </div>
   );
 }
 
