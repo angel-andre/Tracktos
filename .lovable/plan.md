@@ -1,98 +1,53 @@
+## Problem
+
+Right now every mode renders the same 6 archetype shapes (transfer line, swap petals, stake rings, NFT squares, **contract tree**, default circle). Mode only changes *where* and *how* blooms move — never *what they look like*. Because Contract is the most common Aptos tx type, its tree shape dominates every screen, making Garden, Stream, Spiral, Orbit, etc. all look like the same drifting forest.
+
 ## Goal
-Expand the Aptos Pulse page from 3 visualizations to a richer library of 9 modes, organized in a dropdown menu. Every mode is sonified and shares the existing audio engine, with mode‑specific scales and timbres so each one has its own musical character.
 
-## New visualization modes
+Each mode should have an instantly recognizable visual identity. Archetype (tx type) should still influence color and subtle detail, but the **primary shape language is owned by the mode**.
 
-Existing (kept):
-1. **Garden** — hash‑placed blooms (current default).
-2. **Stream** — left‑to‑right flowing river of transactions.
-3. **Constellation** — proposer ring layout.
+## Mode → Visual Language
 
-New (added):
-4. **Spiral** — txns spawn at center and spiral outward; angle from sender hash, radius grows over life. Feels orbital.
-5. **Rain** — txns fall top‑to‑bottom like glyph rain (Matrix‑style verticals); column from sender hash, speed from gas.
-6. **Orbit** — central "sun" with txns orbiting at radii based on amount; size from gas. Slow, hypnotic.
-7. **Grid Pulse** — txns snap to a quantized grid cell (hash → cell); cells flash + ripple. Architectural, rhythmic.
-8. **Waveform** — txns plotted as points along a horizontal waveform that scrolls right‑to‑left; Y is amount, brightness is gas. Reads like an audio scope.
-9. **Fireworks** — txns burst from random ground points, trailing particles upward then exploding. High drama for big amounts.
-10. **Swarm** — txns become boids that flock around hash‑seeded attractors; cluster behavior reveals sender activity bursts.
-11. **Mandala** — txns mirrored across N rotational symmetry axes (kaleidoscope) around the center; produces a generative mandala that evolves.
+| Mode | Visual signature |
+|---|---|
+| Garden | Soft botanical blooms — concentric petals, organic & varied (current style, kept as the "default organic") |
+| Stream | Horizontal comet trails with leading dot + fading tail |
+| Constellation | Star points connected by thin lines to nearby blooms (k-nearest links) |
+| Spiral | Pinwheel arms — rotating multi-arm spokes scaled by gas |
+| Rain | Vertical glyph streaks (Matrix-style) with a bright head + ghost trail |
+| Orbit | Solid planet disc with a thin orbital ring + tiny moon dot |
+| Grid Pulse | Filled square cells that flash and decay (no inner shapes) |
+| Waveform | Tall thin vertical bars (oscilloscope sample), height = amount |
+| Fireworks | Rising spark + radial burst lines on explode phase |
+| Swarm | Small triangle "fish" oriented along velocity, with short motion trail |
+| Mandala | Angular polygon stars (mirrored 8x by the engine) |
 
-## Audio: per‑mode musical character
+Archetype still drives **color** (existing chart token mapping) and one small accent (e.g. a tiny inner symbol: dot for transfer, hex for swap, ring for stake, square for NFT, fork for contract) so tx type is still readable on hover/inspection — but it no longer defines the dominant silhouette.
 
-Each mode picks a scale + voice profile so switching modes changes the music, not just the visuals. The existing `Voice` presets (bloom / crystal / pulse) become the *texture* slider; modes set the *scale and rhythm feel*.
+## Technical Changes
 
-| Mode | Scale | Default voice | Notes |
-|---|---|---|---|
-| Garden | D minor pentatonic (current) | bloom | unchanged |
-| Stream | A dorian | bloom | longer release on high‑gas txns |
-| Constellation | C lydian | crystal | wide stereo, long reverb |
-| Spiral | F# minor pentatonic | crystal | pitch rises as bloom spirals out |
-| Rain | E phrygian | pulse | short percussive, Y position → octave |
-| Orbit | C major triad arpeggio | bloom | slow envelope, droney |
-| Grid Pulse | G minor pentatonic | pulse | quantized to 16th‑note grid for rhythm |
-| Waveform | A natural minor | crystal | pitch follows Y (amount) directly |
-| Fireworks | D dorian, wide octaves | bloom | velocity scaled with explosion size |
-| Swarm | B minor pentatonic | bloom | cluster events trigger chord stabs |
-| Mandala | F lydian | crystal | mirrored notes → small chord per txn |
+**`src/components/pulse/blooms.ts`**
+- Replace the archetype-switch in `drawBloom` with a `mode`-switch that calls a per-mode renderer (`drawGarden`, `drawStream`, `drawConstellation`, `drawSpiral`, `drawRain`, `drawOrbit`, `drawGrid`, `drawWaveform`, `drawFireworks`, `drawSwarm`, `drawMandala`).
+- Add `mode: Mode` to `DrawCtx` (passed through from the engine).
+- Keep archetype color + add a small `drawArchetypeAccent(ctx, archetype, r)` helper used by renderers that want to surface tx type subtly.
+- For Fireworks, branch on `motion.phase` ("rise" → spark, "explode" → radial burst).
+- For Swarm, use `vx/vy` to orient a triangle.
+- Garden keeps a refined version of the current organic petal look so the "Garden" name still matches.
 
-The ambient TPS pad stays globally and re‑tunes its drone roots to match the active mode's key.
+**`src/components/pulse/useBloomEngine.ts`**
+- Pass `mode: modeRef.current` into `drawBloom` via `DrawCtx`.
+- Constellation: after drawing blooms, do one pass linking each bloom to its 1–2 nearest neighbors with a faint line (cheap O(n²) at current density caps).
+- Grid Pulse: render filled rounded-rect cells sized to the grid cell instead of bloom radius.
+- Waveform: render thin vertical bars anchored to canvas vertical center.
 
-## UI changes
+**`src/components/pulse/positioning.ts`**
+- No structural change. Minor: in `waveform`, also store target `y` so the renderer can anchor bar height to vertical distance from center.
 
-- Replace the 3‑button mode strip in the header with a **dropdown** (`shadcn` `Select`) labeled "Visualization", showing the current mode name + a small icon.
-- Group modes in the dropdown:
-  - **Organic**: Garden, Spiral, Swarm, Fireworks
-  - **Geometric**: Constellation, Grid Pulse, Mandala, Orbit
-  - **Linear**: Stream, Rain, Waveform
-- Each item shows a `lucide-react` icon + short label.
-- The bottom audio bar keeps the voice texture toggle (bloom / crystal / pulse) — it now acts as a *modifier* on top of the mode's default voice. Add a small "Auto" option that defers to the mode's recommended voice.
+**Files NOT touched**
+- `modes.ts`, `AudioEngine.ts`, `useAudioEngine.ts`, `AudioControls.tsx`, `Pulse.tsx` — audio behavior and UI stay as they are.
 
-## Technical details
+## Acceptance
 
-**`positioning.ts`**
-- Extend `Mode` union with the 8 new values.
-- Add a position function per mode:
-  - `spiralPosition(tx, w, h, age)` — uses age inside the engine; for spawn we just compute initial `(cx, cy)` and hand off to a custom updater.
-  - `rainPosition`, `orbitPosition`, `gridPulsePosition`, `waveformPosition`, `fireworksPosition`, `swarmPosition`, `mandalaPosition`.
-- Some modes (orbit, swarm, spiral, fireworks, rain) need per‑frame motion not currently in `tickBloom`. We extend `BloomState` with an optional `motion` discriminator: `{ kind: "linear" } | { kind: "orbit", cx, cy, r, omega, theta } | { kind: "spiral", cx, cy, omega, growth } | { kind: "fall", ax, ay } | { kind: "boid", target } | { kind: "burst", phase: "rise" | "explode", explodeAt }`.
-- `useBloomEngine.ts` switches on `motion.kind` each tick to update position.
-
-**`blooms.ts`**
-- Add lightweight draw variants where modes need different visuals (e.g. waveform draws a small dot+stem; rain draws a vertical streak; mandala draws the bloom + mirror copies via `ctx.save`/rotate).
-- Mandala drawing is implemented at the engine level (loop N rotations around center) rather than per‑bloom to keep symmetry consistent.
-
-**`AudioEngine.ts`**
-- Add `setScale(scale: Scale)` where `Scale` is a small interface `{ root: number; intervals: number[]; octaves: number }`.
-- Add a `mode`‑specific scheduling hint:
-  - `quantize?: "16n" | "8n"` — when set, `playTransaction` snaps `when` to the next grid tick (used for Grid Pulse).
-  - `chord?: number` — when >1, plays N stacked notes (used for Mandala).
-- Re‑tune ambient pad oscillators on `setScale` via short `linearRampToValueAtTime`.
-
-**`useAudioEngine.ts`**
-- Accepts `mode` prop. On mode change, calls `engine.setScale(MODE_TO_SCALE[mode])` and `engine.setVoice(userVoice ?? MODE_TO_VOICE[mode])`.
-- Voice preset becomes nullable ("auto") with localStorage persistence.
-
-**`Pulse.tsx`**
-- Replace mode button strip with a `Select` (already in `components/ui/select.tsx`).
-- Pass `mode` to `useAudioEngine`.
-- Update legend caption per mode (one short sentence describing what size/position/color encode).
-
-## Files to create / edit
-
-Edit:
-- `src/components/pulse/positioning.ts` — new mode types + position functions.
-- `src/components/pulse/blooms.ts` — extend `BloomState` with motion + add mode‑specific draw helpers.
-- `src/components/pulse/useBloomEngine.ts` — motion dispatcher per `motion.kind`.
-- `src/components/pulse/AudioEngine.ts` — scale switching, quantize, chord, ambient retune.
-- `src/components/pulse/useAudioEngine.ts` — accept `mode`, drive scale/voice.
-- `src/components/pulse/AudioControls.tsx` — add "Auto" voice option.
-- `src/pages/Pulse.tsx` — replace mode strip with grouped `Select` dropdown; pass `mode` to audio.
-
-Create:
-- `src/components/pulse/modes.ts` — central registry: `MODES = [{ id, label, group, icon, scale, defaultVoice, description }]`. Single source of truth used by both UI dropdown and audio/engine.
-
-## Out of scope (intentionally)
-- No new dependencies; everything stays Web Audio + Canvas2D.
-- No changes to data fetching or edge functions.
-- No keyboard shortcut layer (could be a follow‑up).
+- Switching the dropdown produces a visibly different shape language each time, not just different motion of the same shapes.
+- The "tree" silhouette no longer appears in any mode (the contract tree shape is removed entirely; contract txs get the mode's shape + an optional small fork accent).
+- Hover still highlights same-sender blooms; click-to-inspect still works; performance stays smooth at the current density cap.
