@@ -17,8 +17,8 @@ serve(async (req) => {
   }
 
   try {
-    const { limit = 50 } = await req.json();
-    const safeLimit = Math.min(Math.max(parseInt(String(limit)) || 50, 1), 100);
+    const { limit = 100 } = await req.json();
+    const safeLimit = Math.min(Math.max(parseInt(String(limit)) || 100, 1), 100);
     
     console.log(`Fetching ${safeLimit} recent transactions from Aptos REST API...`);
 
