@@ -46,6 +46,12 @@ interface TransactionStats {
 
 export function useRealtimeTransactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [lastBurst, setLastBurst] = useState<{
+    txs: Transaction[];
+    ledgerVersion: string;
+    blockHeight: string;
+    at: number;
+  } | null>(null);
   const [stats, setStats] = useState<TransactionStats>({
     tps: 0,
     totalTransactions: 0,
@@ -129,6 +135,15 @@ export function useRealtimeTransactions() {
             ).slice(0, 100);
             return unique;
           });
+
+          // Publish a burst marker so the visual/audio layer can react to
+          // the *moment* a batch of fresh, unique txs lands.
+          setLastBurst({
+            txs: newTransactions,
+            ledgerVersion: data.ledgerInfo?.ledgerVersion ?? "0",
+            blockHeight: data.ledgerInfo?.blockHeight ?? "0",
+            at: Date.now(),
+          });
         }
 
         // Calculate type distribution
@@ -176,5 +191,5 @@ export function useRealtimeTransactions() {
     };
   }, [fetchTransactions]);
 
-  return { transactions, stats, isConnected, error };
+  return { transactions, stats, isConnected, error, lastBurst };
 }

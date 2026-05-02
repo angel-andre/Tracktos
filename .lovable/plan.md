@@ -1,87 +1,84 @@
 
-# Aptos Pulse — Clean Redesign
+# Aptos Pulse — Truthful, Live-Driven Visuals & Audio
 
-Replace the busy 11-mode bloom system with a focused, premium 5-mode visualization where every transaction is a path from an **origin** to a **destination**, with one melodic tone per type. Calm, sparse, readable.
+## Why the experience feels "fake" today
 
-## Visual model
+After tracing the data path (`useRealtimeTransactions` → `useFlowEngine` → `flows.ts` and `AudioEngine`), three concrete causes explain what you're seeing/hearing:
 
-Every transaction becomes a `Flow`: an animated arc/comet/streak from `origin → destination` over ~1.5–3s, then a short fade. No more persistent 12s blooms layering on top of each other.
+1. **Sound pulses appear "random" because the audio engine plays a `setAmbientLevel` pad keyed to TPS, plus a TPS‑breathing background wash on the canvas.** The pad slowly modulates volume/cutoff continuously. Even with zero new transactions, you still hear and see motion — that's what reads as "fake."
+2. **Polling cadence (3 s) vs. animation cadence are decoupled.** Up to ~25 transactions arrive in one burst every 3 seconds, then the canvas plays them out smoothly with no visible "this just landed" moment, so there's no felt link between a sound/visual and a real event.
+3. **"Hover proves it's live" is great, but nothing else does.** There's no on‑screen ledger‑version stamp, no per‑burst counter, and no visible 1:1 marker tying a sound chime to the specific transaction that just triggered it.
 
-```text
-   origin ●━━━━━━━━━━━━━━━━━━ ➤ ● destination
-            comet head + tapering trail
+## What we'll change
+
+### A. Strict 1:1 binding — every visual & sound = one real, unique transaction
+
+In `useFlowEngine.ts` and `AudioEngine.ts`:
+- Maintain a single shared `seen: Set<txHash>` (already exists for visuals; add the same gate for audio so the engine cannot emit a note unless a never-before-seen `tx.hash` arrives).
+- **Remove the ambient pad entirely** (`ambientGain`, `ambientFilter`, `ambientOscs`, `setAmbientLevel`). The only sound the user ever hears will be a chime triggered by a confirmed mainnet tx.
+- **Remove the TPS "breathing" wash** in `drawBackground`. Background becomes a static dark canvas with a faint dot grid — no motion that isn't a transaction.
+- Add a small "Sound = TX" indicator chip near the audio controls so the user can verify the contract.
+
+### B. Visible "tick" per polling burst (proof of liveness)
+
+When a fetch returns N new transactions, fire a one-frame **burst marker**:
+- A thin horizontal sweep line briefly crosses the canvas.
+- A floating chip appears top-center: `+12 txns @ ledger 5,084,392,051` for ~1.2 s, then fades.
+- The chip cycles through the actual incoming hashes (first 6 chars) so users can watch new IDs land in real time.
+
+This is the single clearest "this is live" signal and costs almost nothing.
+
+### C. Per-mode signatures that look genuinely different
+
+Right now Constellation/Garden/Orbit all render the same arc primitive. We'll give each mode a distinct visual grammar tied to real tx fields:
+
+- **Constellation** — Arc + comet head (kept). Adds a static line between sender↔contract anchors that brightens with each tx; line thickness = log(amount).
+- **Garden** — Replace arcs with **anchored sprouts**: each tx grows a stem at its destination anchor whose height = gas, with petals colored by archetype. No travel arcs.
+- **Orbit** — Top‑K hot anchors (by `heat`) become orbital centers; new txs render as **satellites** that complete one full orbit then dissolve. Orbit radius = log(amount), speed = 1/gas.
+- **Pulse Lines** — Single radial ring per tx from sender anchor (kept), but ring count caps at active-tx count — no decorative rings.
+- **Rain** — Each streak's x-position is hashed from sender, length from amount, color from type (kept). Add a faint vertical guide column when hovered.
+
+### D. Accuracy overlays (always on)
+
+Top-left HUD adds three live readouts wired directly to `stats`:
 ```
+LEDGER  5,084,392,621
+BLOCK   743,989,572
+TPS     128.4   (rolling 15s)
+```
+Bottom-left adds a **rolling tx ticker** showing the last 6 hashes scrolling up as they arrive, each clickable → opens explorer. This makes the proof obvious without requiring a hover.
 
-- Origin/destination derived from `tx.sender` and `tx.receiver` (fallback: hash) via stable hash → 2D coordinate. Same address → same anchor point, so a network shape emerges.
-- Anchors that recently received traffic become small **glowing nodes** that pulse on arrival, then fade.
-- Hard cap on simultaneous flows (e.g. 60). Excess transactions queue briefly, then drop oldest. High-TPS bursts are **batched** into a single brighter pulse on the same edge instead of stacking dozens of identical lines.
+### E. Audio: tighter, sparser, deterministic
 
-## The 5 modes
+- Drop ambient pad (above).
+- Per-tx note pitch is already deterministic from `sender` hash — keep.
+- Add a hard rule: **at most one note per unique `tx.hash`, ever.** Maintain a bounded LRU of played hashes (size 5000).
+- When a burst lands with >6 new txs, audio plays the 6 highest-amount ones and skips the rest (with a small "+N more" visual indicator) — better than a smear of clicks.
+- Remove the TPS-driven duck curve; replace with a fixed soft limiter (compressor stays).
 
-All 5 share the origin→destination model; each interprets the path differently.
+## Technical notes (for the implementer)
 
-1. **Constellation** — anchors are stars on a soft radial layout; flows are thin curved bezier arcs with a comet head. Faint persistent links between recently-active node pairs.
-2. **Garden** — anchors bloom briefly (small, 3–5 thin translucent petals, ~40px max) when a flow arrives. Flows are gentle curved stems connecting bloom to bloom. Sparse — max 1 active bloom per anchor.
-3. **Pulse Lines** — flows are clean horizontal/radial sine ripples emitted from the origin, expanding outward and dissipating. Destination glows when the wavefront reaches it.
-4. **Orbit** — top ~8 most-active addresses become orbital centers (sized by traffic). Flows are short light trails arcing between centers, satellites briefly orbiting the destination before fading.
-5. **Rain** — flows fall as soft vertical light streaks; x-position from sender hash, length from amount. Calm, atmospheric.
+Files to edit:
+- `src/components/pulse/AudioEngine.ts` — remove ambient pad nodes & `setAmbientLevel`; add `playedHashes` LRU; cap per-burst polyphony to 6; remove TPS duck.
+- `src/components/pulse/useAudioEngine.ts` — remove `setAmbientLevel(tps)` call; pass burst (array of new txs since last poll) instead of full transaction list to a new `playBurst` method.
+- `src/hooks/useRealtimeTransactions.ts` — expose `lastBurst: { txs: Transaction[]; ledgerVersion: string; at: number } | null` alongside `transactions`.
+- `src/components/pulse/flows.ts` — remove the TPS breathing wash in `drawBackground`; add `drawSproutBloom`, `drawOrbitSatellite`; keep arc/ripple/rain.
+- `src/components/pulse/useFlowEngine.ts` — branch per mode for new shapes; subscribe to `lastBurst` to trigger the sweep marker.
+- `src/components/pulse/PulseCanvas.tsx` — render burst chip overlay (`+N txns @ ledger …`) and the rolling hash ticker.
+- `src/pages/Pulse.tsx` — add LEDGER / BLOCK / TPS readouts to the legend card; add "Sound = 1 chime per tx" caption under the audio control.
 
-Mode dropdown shows only these 5, grouped: **Network** (Constellation, Garden, Orbit), **Motion** (Pulse Lines, Rain).
-
-## Visual style refinements
-
-- Background: existing dark + subtle radial gradient + a faint dot grid (very low alpha) for spatial anchoring.
-- Palette: keep existing chart tokens (Aptos green/teal/amber/violet) but cap stroke alpha at ~0.7, glow alpha at ~0.05. Thin 1–1.5px lines.
-- Trails via per-frame background wash (already present) but slightly darker so old strokes clear faster → no buildup.
-- Easing: `easeInOutCubic` along the path, fade tail uses `easeOutQuart`.
-- No mandala mirroring, no boid swarms, no fireworks bursts, no per-bloom rotating petals.
-
-## Audio refinements
-
-Keep `AudioEngine` foundation; tighten it:
-
-- **Per-type instrument** (overrides voice when "Auto"):
-  - Transfer → soft sine bell (current `bloom`)
-  - Swap → warm triangle+detuned saw pad (new `warm` voice)
-  - Stake → low sine + sub octave (new `deep` voice)
-  - NFT → plucked FM chime (current `crystal`, shorter decay)
-  - Contract → bright square+filter blip (current `pulse`, softer)
-  - Other → neutral soft sine
-- Scale: D minor pentatonic across all modes by default (mode can still override). Mode change → smooth scale crossfade.
-- **Stereo positioning**: pan from origin.x → -1..+1 via StereoPannerNode.
-- **Polyphony cap**: 6 simultaneous voices (down from 12). Within any 80ms window, dedupe identical pitch+type to one note.
-- **High-TPS ducking**: above 50 TPS, per-note gain scales down (1 → 0.4) so it stays musical, not noisy.
-- Existing reverb/compressor/ambient pad retained; pad gain reduced.
-
-## UI changes
-
-Bottom control bar adds:
-- **Animation Speed** slider (0.5×–2×, default 1×) — multiplies flow duration globally.
-- Density slider repurposed to **Max Flows** (10–80, default 40).
-- Mode dropdown reduced to 5 entries.
-- AudioControls unchanged (mute, volume, voice). Default starts muted (already does).
-
-Legend, Recent Blooms panel, header, snapshot button: kept as-is.
-
-## Technical plan
-
-New files:
-- `src/components/pulse/flows.ts` — `FlowState` type, `createFlow`, `tickFlow`, `drawFlow` per-mode renderers, anchor registry (`Anchor` map keyed by address with `x,y,lastHit,heat`).
-- `src/components/pulse/useFlowEngine.ts` — replaces `useBloomEngine`. Manages anchors map, flow array (capped), background grid render, per-mode draw dispatch, hover/click hit-testing against anchors.
-- New voice synths in `AudioEngine.ts`: `warm`, `deep`. Add `StereoPannerNode` per-note. Reduce polyphony cap, add TPS-based gain scaling, dedupe within 80ms.
-
-Edited files:
-- `src/components/pulse/modes.ts` — trim to 5 modes; each gets a `defaultInstrument` per archetype mapping (or rely on per-type override in audio engine). Remove unused icons/scales.
-- `src/components/pulse/positioning.ts` — replace per-mode spawn with `anchorFor(address, w, h, mode)` returning a stable point per address per mode (radial ring for Constellation, scattered grid for Garden, top-N orbit centers for Orbit, x-column for Rain, free for Pulse Lines).
-- `src/components/pulse/PulseCanvas.tsx` — swap to `useFlowEngine`.
-- `src/pages/Pulse.tsx` — trim mode list, add Animation Speed slider, rename Density → Max Flows, pass `speed` prop down.
-- `src/components/pulse/useAudioEngine.ts` — pass tx type → instrument override, pass tps for ducking, pass stereo pan from spawn x.
-
-Deleted (or left dormant):
-- `src/components/pulse/blooms.ts` and `useBloomEngine.ts` removed (replaced by flows engine).
+No backend / edge function changes — data path is already correct and live; we're aligning the UI/audio to that truth.
 
 ## Out of scope
 
-- API/data layer changes.
-- Globe page.
-- Mobile-specific layout overhaul (existing responsive header retained).
+- Switching to WebSocket/SSE (memory rule: 3-second polling stays).
+- Changing how transactions are classified.
+- Visual redesign of header / theme.
+
+## Acceptance check
+
+After implementation, the user should be able to:
+1. Mute audio, watch the ledger number tick, see a sweep + chip every 3 s with the real count of new txs.
+2. Unmute and hear exactly one chime per unique tx hash (no ambient drone).
+3. Switch modes and immediately see a structurally different visualization (sprouts vs orbits vs ripples vs streaks vs comets) — not just different motion of the same arcs.
+4. Hover any visible element and confirm the underlying transaction in the tooltip matches one currently in the rolling ticker.
