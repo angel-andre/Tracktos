@@ -1,5 +1,6 @@
 import type { Transaction } from "@/hooks/useRealtimeTransactions";
 import type { Motion } from "./positioning";
+import type { Mode } from "./modes";
 
 // Resolve an HSL CSS variable (e.g. "--chart-1") to a usable color string.
 // Returns "hsl(H S% L% / a)" using the live computed value so light/dark themes Just Work.
@@ -176,6 +177,7 @@ export function aliveFrac(b: BloomState): number {
 export interface DrawCtx {
   ctx: CanvasRenderingContext2D;
   hovered?: boolean;
+  mode: Mode;
 }
 
 export function drawBloom(b: BloomState, dctx: DrawCtx) {
@@ -192,14 +194,17 @@ export function drawBloom(b: BloomState, dctx: DrawCtx) {
   ctx.translate(b.x, b.y);
   ctx.rotate(b.rotation);
 
-  // Inner soft glow halo
-  const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 1.4);
-  halo.addColorStop(0, glow);
-  halo.addColorStop(1, cssVarHsl(b.colorVar, 0));
-  ctx.fillStyle = halo;
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 1.4, 0, Math.PI * 2);
-  ctx.fill();
+  // Inner soft glow halo (skipped for cell-style modes that fill themselves)
+  const noHalo = dctx.mode === "grid" || dctx.mode === "rain" || dctx.mode === "waveform";
+  if (!noHalo) {
+    const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 1.4);
+    halo.addColorStop(0, glow);
+    halo.addColorStop(1, cssVarHsl(b.colorVar, 0));
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   // Failed → dashed destructive stroke override
   if (!b.tx.success) {
@@ -211,25 +216,49 @@ export function drawBloom(b: BloomState, dctx: DrawCtx) {
   }
   const amtBoost = Math.min(1, Math.log10(b.tx.amount + 1) / 3);
   ctx.lineWidth = 1 + amtBoost * 2.5;
+  const fill = cssVarHsl(b.colorVar, baseAlpha * 0.55);
 
-  switch (b.archetype) {
-    case "transfer":
-      drawTransferShape(ctx, r, t);
+  switch (dctx.mode) {
+    case "garden":
+      drawGarden(ctx, r, b.archetype);
       break;
-    case "swap":
-      drawSwapShape(ctx, r);
+    case "stream":
+      drawStream(ctx, r, b);
       break;
-    case "stake":
-      drawStakeShape(ctx, r, t);
+    case "constellation":
+      drawConstellation(ctx, r);
       break;
-    case "nft":
-      drawNftShape(ctx, r);
+    case "spiral":
+      drawSpiral(ctx, r, amtBoost);
       break;
-    case "contract":
-      drawContractShape(ctx, r);
+    case "rain":
+      drawRain(ctx, r, b, fill);
+      break;
+    case "orbit":
+      drawOrbit(ctx, r, fill);
+      break;
+    case "grid":
+      drawGridCell(ctx, r, t, fill);
+      break;
+    case "waveform":
+      drawWaveformBar(ctx, r, b, fill);
+      break;
+    case "fireworks":
+      drawFirework(ctx, r, b, t);
+      break;
+    case "swarm":
+      drawSwarmFish(ctx, r, b, fill);
+      break;
+    case "mandala":
+      drawMandalaShard(ctx, r);
       break;
     default:
-      drawDefaultShape(ctx, r);
+      drawGarden(ctx, r, b.archetype);
+  }
+
+  // Tiny archetype accent so tx type stays readable (skip for cell modes)
+  if (!noHalo && dctx.mode !== "fireworks") {
+    drawArchetypeAccent(ctx, b.archetype, r, baseAlpha);
   }
 
   if (dctx.hovered) {
@@ -244,34 +273,19 @@ export function drawBloom(b: BloomState, dctx: DrawCtx) {
   ctx.restore();
 }
 
-function drawTransferShape(ctx: CanvasRenderingContext2D, r: number, t: number) {
-  // Two nodes joined by a line, with a particle traveling along it
-  ctx.beginPath();
-  ctx.moveTo(-r, 0);
-  ctx.lineTo(r, 0);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(-r, 0, 3, 0, Math.PI * 2);
-  ctx.arc(r, 0, 3, 0, Math.PI * 2);
-  ctx.fillStyle = ctx.strokeStyle as string;
-  ctx.fill();
-  // traveling dot
-  const px = -r + (1 - t) * (r * 2);
-  ctx.beginPath();
-  ctx.arc(px, 0, 4, 0, Math.PI * 2);
-  ctx.fill();
-}
+// ============== Per-mode renderers ==============
+// Each renderer is in local coords (translated+rotated to bloom origin).
 
-function drawSwapShape(ctx: CanvasRenderingContext2D, r: number) {
-  // Hexagonal petal burst
-  const petals = 6;
+function drawGarden(ctx: CanvasRenderingContext2D, r: number, arch: Archetype) {
+  // Soft botanical bloom — varied petal counts so it doesn't look uniform
+  const petals = arch === "swap" ? 6 : arch === "nft" ? 4 : arch === "stake" ? 8 : 5;
   for (let i = 0; i < petals; i++) {
     const a = (i / petals) * Math.PI * 2;
     ctx.beginPath();
     ctx.ellipse(
-      Math.cos(a) * r * 0.55,
-      Math.sin(a) * r * 0.55,
-      r * 0.45,
+      Math.cos(a) * r * 0.5,
+      Math.sin(a) * r * 0.5,
+      r * 0.5,
       r * 0.18,
       a,
       0,
@@ -279,57 +293,281 @@ function drawSwapShape(ctx: CanvasRenderingContext2D, r: number) {
     );
     ctx.stroke();
   }
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.18, 0, Math.PI * 2);
+  ctx.stroke();
 }
 
-function drawStakeShape(ctx: CanvasRenderingContext2D, r: number, t: number) {
-  // Concentric expanding rings
-  for (let i = 0; i < 4; i++) {
-    const rr = r * (0.3 + i * 0.22);
-    ctx.globalAlpha = 0.15 + 0.25 * t * (1 - i / 4);
-    ctx.beginPath();
-    ctx.arc(0, 0, rr, 0, Math.PI * 2);
-    ctx.stroke();
+function drawStream(ctx: CanvasRenderingContext2D, r: number, b: BloomState) {
+  // Comet — leading dot + tapering tail to the left (motion is +x)
+  const tailLen = r * 2.2;
+  const grad = ctx.createLinearGradient(-tailLen, 0, 0, 0);
+  grad.addColorStop(0, cssVarHsl(b.colorVar, 0));
+  grad.addColorStop(1, cssVarHsl(b.colorVar, 0.7 * aliveFrac(b)));
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = Math.max(2, r * 0.18);
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-tailLen, 0);
+  ctx.lineTo(0, 0);
+  ctx.stroke();
+  ctx.fillStyle = cssVarHsl(b.colorVar, 0.9 * aliveFrac(b));
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawConstellation(ctx: CanvasRenderingContext2D, r: number) {
+  // 4-point star + small dot
+  const arms = 4;
+  ctx.beginPath();
+  for (let i = 0; i < arms; i++) {
+    const a = (i / arms) * Math.PI * 2;
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(a) * r * 0.6, Math.sin(a) * r * 0.6);
   }
-  ctx.globalAlpha = 1;
+  ctx.stroke();
+  ctx.fillStyle = ctx.strokeStyle as string;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.14, 0, Math.PI * 2);
+  ctx.fill();
 }
 
-function drawNftShape(ctx: CanvasRenderingContext2D, r: number) {
-  // Square kaleidoscope: 4 nested rotated squares
-  for (let i = 0; i < 4; i++) {
+function drawSpiral(ctx: CanvasRenderingContext2D, r: number, amtBoost: number) {
+  // Rotating pinwheel — 3 swept arms
+  const arms = 3;
+  for (let i = 0; i < arms; i++) {
     ctx.save();
-    ctx.rotate((i * Math.PI) / 8);
-    const s = r * (0.4 + i * 0.18);
-    ctx.strokeRect(-s, -s, s * 2, s * 2);
-    ctx.restore();
-  }
-}
-
-function drawContractShape(ctx: CanvasRenderingContext2D, r: number) {
-  // Branching tree (3 levels)
-  function branch(len: number, depth: number) {
-    if (depth === 0 || len < 2) return;
+    ctx.rotate((i / arms) * Math.PI * 2);
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.lineTo(0, -len);
+    ctx.quadraticCurveTo(r * 0.4, -r * 0.3, r * (0.7 + amtBoost * 0.3), 0);
     ctx.stroke();
-    ctx.save();
-    ctx.translate(0, -len);
-    ctx.rotate(0.5);
-    branch(len * 0.7, depth - 1);
-    ctx.restore();
-    ctx.save();
-    ctx.translate(0, -len);
-    ctx.rotate(-0.5);
-    branch(len * 0.7, depth - 1);
     ctx.restore();
   }
-  branch(r * 0.7, 3);
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.12, 0, Math.PI * 2);
+  ctx.fillStyle = ctx.strokeStyle as string;
+  ctx.fill();
 }
 
-function drawDefaultShape(ctx: CanvasRenderingContext2D, r: number) {
+function drawRain(
+  ctx: CanvasRenderingContext2D,
+  r: number,
+  b: BloomState,
+  fill: string,
+) {
+  // Vertical streak — bright head, fading vertical trail upward (motion is +y)
+  // We're rotated by b.rotation; undo that to keep streak truly vertical.
+  ctx.rotate(-b.rotation);
+  const w = Math.max(2, r * 0.18);
+  const h = r * 1.8;
+  const grad = ctx.createLinearGradient(0, -h, 0, 0);
+  grad.addColorStop(0, cssVarHsl(b.colorVar, 0));
+  grad.addColorStop(1, cssVarHsl(b.colorVar, 0.7 * aliveFrac(b)));
+  ctx.fillStyle = grad;
+  ctx.fillRect(-w / 2, -h, w, h);
+  // bright head
+  ctx.fillStyle = fill;
+  ctx.fillRect(-w * 0.9, 0, w * 1.8, w * 1.8);
+}
+
+function drawOrbit(ctx: CanvasRenderingContext2D, r: number, fill: string) {
+  // Solid planet + thin orbital ring + tiny moon
+  ctx.fillStyle = fill;
   ctx.beginPath();
-  ctx.arc(0, 0, r * 0.3, 0, Math.PI * 2);
+  ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(0, 0, r * 0.85, r * 0.32, 0.4, 0, Math.PI * 2);
   ctx.stroke();
+  // moon
+  ctx.beginPath();
+  ctx.arc(r * 0.78, -r * 0.18, r * 0.09, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawGridCell(
+  ctx: CanvasRenderingContext2D,
+  r: number,
+  t: number,
+  fill: string,
+) {
+  // Filled rounded square cell that flashes on birth and decays
+  const flash = 1 - Math.pow(1 - t, 4); // bright early
+  const s = r * 1.2;
+  ctx.fillStyle = fill;
+  ctx.globalAlpha = 0.35 + 0.55 * flash;
+  const radius = Math.min(s * 0.4, 8);
+  roundRect(ctx, -s, -s, s * 2, s * 2, radius);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.stroke();
+}
+
+function drawWaveformBar(
+  ctx: CanvasRenderingContext2D,
+  r: number,
+  b: BloomState,
+  fill: string,
+) {
+  // Vertical bar — undo rotation, height proportional to amount, anchored at canvas vertical center.
+  ctx.rotate(-b.rotation);
+  const w = Math.max(2, r * 0.18);
+  const amt = Math.min(1, Math.log10(b.tx.amount + 1) / 4);
+  const h = 30 + amt * 220;
+  ctx.fillStyle = fill;
+  ctx.fillRect(-w / 2, -h / 2, w, h);
+  // tip caps
+  ctx.beginPath();
+  ctx.arc(0, -h / 2, w * 0.6, 0, Math.PI * 2);
+  ctx.arc(0, h / 2, w * 0.6, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawFirework(
+  ctx: CanvasRenderingContext2D,
+  r: number,
+  b: BloomState,
+  t: number,
+) {
+  ctx.rotate(-b.rotation);
+  const isExplode = b.motion.kind === "burst" && b.motion.phase === "explode";
+  if (!isExplode) {
+    // rising spark — small dot with short downward trail
+    ctx.fillStyle = cssVarHsl(b.colorVar, 0.9 * t);
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.max(2, r * 0.18), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = cssVarHsl(b.colorVar, 0.4 * t);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, r * 0.6);
+    ctx.stroke();
+  } else {
+    // radial burst — 12 lines outward, length grows with age past explode
+    const growth = Math.min(1, (b.age - 0.5) * 1.2);
+    const len = r * (0.8 + growth * 1.6);
+    const lines = 12;
+    ctx.strokeStyle = cssVarHsl(b.colorVar, 0.85 * t);
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let i = 0; i < lines; i++) {
+      const a = (i / lines) * Math.PI * 2;
+      ctx.moveTo(Math.cos(a) * r * 0.15, Math.sin(a) * r * 0.15);
+      ctx.lineTo(Math.cos(a) * len, Math.sin(a) * len);
+    }
+    ctx.stroke();
+  }
+}
+
+function drawSwarmFish(
+  ctx: CanvasRenderingContext2D,
+  r: number,
+  b: BloomState,
+  fill: string,
+) {
+  // Triangle oriented along velocity
+  ctx.rotate(-b.rotation);
+  const heading = Math.atan2(b.vy, b.vx) || 0;
+  ctx.rotate(heading);
+  const s = r * 0.5;
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.moveTo(s, 0);
+  ctx.lineTo(-s * 0.7, s * 0.5);
+  ctx.lineTo(-s * 0.4, 0);
+  ctx.lineTo(-s * 0.7, -s * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawMandalaShard(ctx: CanvasRenderingContext2D, r: number) {
+  // 6-point angular star
+  const points = 6;
+  ctx.beginPath();
+  for (let i = 0; i < points * 2; i++) {
+    const a = (i / (points * 2)) * Math.PI * 2;
+    const rad = i % 2 === 0 ? r * 0.7 : r * 0.28;
+    const x = Math.cos(a) * rad;
+    const y = Math.sin(a) * rad;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+}
+
+function drawArchetypeAccent(
+  ctx: CanvasRenderingContext2D,
+  arch: Archetype,
+  r: number,
+  alpha: number,
+) {
+  ctx.save();
+  ctx.fillStyle = cssVarHsl("--foreground", alpha * 0.35);
+  ctx.strokeStyle = cssVarHsl("--foreground", alpha * 0.35);
+  ctx.lineWidth = 1;
+  const s = Math.max(2, r * 0.09);
+  switch (arch) {
+    case "transfer":
+      ctx.beginPath();
+      ctx.arc(0, 0, s, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case "swap":
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        const x = Math.cos(a) * s * 1.3;
+        const y = Math.sin(a) * s * 1.3;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+      break;
+    case "stake":
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 1.5, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    case "nft":
+      ctx.strokeRect(-s, -s, s * 2, s * 2);
+      break;
+    case "contract":
+      ctx.beginPath();
+      ctx.moveTo(0, s * 1.5);
+      ctx.lineTo(0, -s * 0.3);
+      ctx.moveTo(0, -s * 0.3);
+      ctx.lineTo(-s, -s * 1.2);
+      ctx.moveTo(0, -s * 0.3);
+      ctx.lineTo(s, -s * 1.2);
+      ctx.stroke();
+      break;
+    default:
+      break;
+  }
+  ctx.restore();
+}
+
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 // Faint persistent ring "scar" left after a bloom expires
