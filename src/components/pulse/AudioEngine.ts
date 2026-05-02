@@ -59,6 +59,9 @@ export class AudioEngine {
   private playedHashes: Set<string> = new Set();
   private playedOrder: string[] = [];
   private static MAX_PLAYED = 5000;
+  // Optional pan/wet hints injected per-tx by the visual layer.
+  private panHints: Map<string, number> = new Map();
+  private wetHints: Map<string, number> = new Map();
 
   isReady() {
     return !!this.ctx;
@@ -161,6 +164,27 @@ export class AudioEngine {
     this.perTypeVoice = on;
   }
 
+  // Set spatial pan (-1..1) for upcoming play of `hash`. Called by the
+  // visual engine right before playBurst so audio matches on-screen x.
+  setPanFor(hash: string, pan: number) {
+    this.panHints.set(hash, Math.max(-1, Math.min(1, pan)));
+    if (this.panHints.size > 256) {
+      const k = this.panHints.keys().next().value;
+      if (k !== undefined) this.panHints.delete(k);
+    }
+  }
+  // Optional wet (reverb) bias per archetype, applied via playTransaction.
+  private wetBiasFor(arch: string): number {
+    switch (arch) {
+      case "Swap": return 0.18;       // swirly
+      case "NFT": return 0.30;        // glassy / spacious
+      case "Stake": return 0.22;      // long tail
+      case "Transfer": return 0.05;   // dry, immediate
+      case "Contract": return 0.10;   // tight
+      default: return 0.10;
+    }
+  }
+
   // Mark a hash as already-played so the engine refuses to re-trigger it.
   // Used at unmute time to avoid replaying the buffered backlog.
   seenWithoutPlaying(hashes: string[]) {
@@ -188,9 +212,15 @@ export class AudioEngine {
     const audible = sorted.slice(0, 6);
     const skipped = sorted.slice(6);
     skipped.forEach((t) => this.markPlayed(t.hash));
-    // Stagger lightly so we don't pile 6 attacks on a single sample.
-    const start = this.ctx.currentTime;
-    audible.forEach((tx, i) => this.playTransaction(tx, start + i * 0.045));
+    // Quantize attack times to a slow grid so the result sounds melodic
+    // rather than like simultaneous clicks. Each successive tx in the
+    // burst lands on the next grid step.
+    const grid = this.quantize ?? 0.24; // default ~250 BPM eighth-note feel
+    const now0 = this.ctx.currentTime;
+    const firstStep = Math.ceil(now0 / grid) * grid;
+    audible.forEach((tx, i) => {
+      this.playTransaction(tx, firstStep + i * grid);
+    });
   }
 
   playTransaction(tx: Transaction, scheduledAt?: number) {
@@ -241,7 +271,7 @@ export class AudioEngine {
     // Duration / reverb send from gas
     const gas = Math.max(0, tx.gasCost);
     const duration = 0.6 + Math.min(2.4, Math.log10(1 + gas * 1e6) * 0.4);
-    const wetSend = Math.min(0.8, 0.25 + gas * 5);
+    const wetSend = Math.min(0.85, 0.18 + gas * 5 + this.wetBiasFor(tx.type));
 
     // Per-type instrument when enabled (Auto), else honor the user's voice pick
     const typeVoice: Voice =
@@ -275,8 +305,11 @@ export class AudioEngine {
     // Fixed soft duck so big bursts don't overwhelm; compressor handles peaks.
     const duck = 0.85;
 
-    // Stereo pan from sender hash
-    const pan = ((h % 1000) / 1000) * 2 - 1;
+    // Stereo pan: prefer a hint set by the visual layer (matches on-screen
+    // x position), else fall back to deterministic sender-hash pan.
+    const hinted = this.panHints.get(tx.hash);
+    const pan = hinted !== undefined ? hinted : ((h % 1000) / 1000) * 2 - 1;
+    if (hinted !== undefined) this.panHints.delete(tx.hash);
 
     const chord = this.chordSize;
     for (let c = 0; c < chord; c++) {
