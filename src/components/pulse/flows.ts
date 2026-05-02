@@ -239,9 +239,13 @@ export function drawFlow(f: FlowState, dctx: DrawCtx) {
 
   switch (dctx.mode) {
     case "constellation":
-    case "garden":
-    case "orbit":
       drawArc(f, dctx, u, aliveAlpha, arrived);
+      break;
+    case "garden":
+      drawSprout(f, dctx, travelT, aliveAlpha);
+      break;
+    case "orbit":
+      drawOrbitSatellite(f, dctx, travelT, aliveAlpha);
       break;
     case "pulse":
       drawRipple(f, dctx, travelT, aliveAlpha);
@@ -330,6 +334,102 @@ function drawTinyBloom(
     ctx.stroke();
   }
   ctx.restore();
+}
+
+// Garden mode: each tx is a sprout that grows upward at the destination
+// anchor. Stem height encodes gas; petal count encodes archetype.
+function drawSprout(
+  f: FlowState,
+  dctx: DrawCtx,
+  travelT: number,
+  alpha: number,
+) {
+  const ctx = dctx.ctx;
+  const x = f.dest.x;
+  const baseY = f.dest.y;
+  const gas = Math.max(0, f.tx.gasCost);
+  const maxH = 28 + Math.min(60, Math.log10(1 + gas * 1e6) * 18);
+  const grow = easeInOutCubic(Math.min(1, travelT * 1.4));
+  const stemH = maxH * grow;
+  // Stem
+  ctx.strokeStyle = cssVarHsl(f.colorVar, 0.55 * alpha);
+  ctx.lineWidth = 1 + f.weight * 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x, baseY);
+  ctx.lineTo(x, baseY - stemH);
+  ctx.stroke();
+  // Bud / bloom at top once mostly grown
+  if (grow > 0.5) {
+    const bloomA = (grow - 0.5) * 2 * alpha;
+    const petals =
+      f.arch === "swap" ? 6
+      : f.arch === "nft" ? 4
+      : f.arch === "stake" ? 8
+      : f.arch === "contract" ? 3
+      : 5;
+    const r = 4 + f.weight * 6;
+    const tipY = baseY - stemH;
+    ctx.save();
+    ctx.translate(x, tipY);
+    ctx.fillStyle = cssVarHsl(f.colorVar, 0.7 * bloomA);
+    for (let i = 0; i < petals; i++) {
+      const a = (i / petals) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.ellipse(Math.cos(a) * r * 0.6, Math.sin(a) * r * 0.6, r * 0.55, r * 0.22, a, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Center
+    ctx.fillStyle = cssVarHsl(f.colorVar, 0.95 * bloomA);
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// Orbit mode: satellite revolves around its destination anchor once.
+function drawOrbitSatellite(
+  f: FlowState,
+  dctx: DrawCtx,
+  travelT: number,
+  alpha: number,
+) {
+  const ctx = dctx.ctx;
+  const cx = f.dest.x;
+  const cy = f.dest.y;
+  const radius = 12 + Math.min(60, Math.log10(1 + f.tx.amount) * 14) + f.weight * 8;
+  // One full revolution over the duration; phase deterministic from hash.
+  const phase = hash32(f.tx.hash, 7) * Math.PI * 2;
+  const angle = phase + travelT * Math.PI * 2;
+  const x = cx + Math.cos(angle) * radius;
+  const y = cy + Math.sin(angle) * radius;
+  // Faint orbit ring
+  ctx.strokeStyle = cssVarHsl(f.colorVar, 0.12 * alpha);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  // Trailing arc behind satellite
+  const trail = 0.35;
+  const start = angle - trail * Math.PI * 2;
+  ctx.strokeStyle = cssVarHsl(f.colorVar, 0.55 * alpha);
+  ctx.lineWidth = 1.5 + f.weight * 1.2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, start, angle);
+  ctx.stroke();
+  // Satellite head
+  const headR = 2 + f.weight * 3;
+  const grad = ctx.createRadialGradient(x, y, 0, x, y, headR * 4);
+  grad.addColorStop(0, cssVarHsl(f.colorVar, 0.9 * alpha));
+  grad.addColorStop(1, cssVarHsl(f.colorVar, 0));
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, headR * 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = cssVarHsl(f.colorVar, alpha);
+  ctx.beginPath();
+  ctx.arc(x, y, headR, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawRipple(
