@@ -17,12 +17,13 @@ serve(async (req) => {
   }
 
   try {
-    const { limit = 10 } = await req.json();
+    const { limit = 50 } = await req.json();
+    const safeLimit = Math.min(Math.max(parseInt(String(limit)) || 50, 1), 100);
     
-    console.log(`Fetching ${limit} recent transactions from Aptos REST API...`);
+    console.log(`Fetching ${safeLimit} recent transactions from Aptos REST API...`);
 
     // Use the REST API to get recent transactions
-    const response = await fetch(`${APTOS_REST_URL}/transactions?limit=${limit}`, {
+    const response = await fetch(`${APTOS_REST_URL}/transactions?limit=${safeLimit}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -83,57 +84,116 @@ serve(async (req) => {
     
     await Promise.all(proposerPromises);
     
-    // Transform to our transaction format
-    const transactions = userTransactions
-      .map((tx: any) => {
-        // Determine transaction type from payload
-        let type = "Transaction";
-        const functionName = tx.payload?.function || "";
-        
-        if (functionName.includes("transfer") || functionName.includes("coin")) {
-          type = "Transfer";
-        } else if (functionName.includes("swap") || functionName.includes("liquidity")) {
-          type = "Swap";
-        } else if (functionName.includes("stake") || functionName.includes("delegation")) {
-          type = "Stake";
-        } else if (functionName.includes("mint") || functionName.includes("nft") || functionName.includes("token")) {
-          type = "NFT";
-        } else if (functionName.includes("::")) {
-          type = "Contract";
-        }
+    // Transform to our transaction format with stronger classification.
+    const transactions = userTransactions.map((tx: any) => {
+      const fn: string = tx.payload?.function || "";
+      const fnLower = fn.toLowerCase();
+      const moduleAddr: string = fn.split("::")[0] || "";
+      const moduleName: string = fn.split("::")[1] || "";
+      const fnName: string = fn.split("::")[2] || "";
 
-        // Extract amount if it's a coin transfer
-        let amount = 0;
-        if (tx.payload?.arguments && tx.payload.arguments.length > 0) {
-          const potentialAmount = tx.payload.arguments[tx.payload.arguments.length - 1];
-          if (typeof potentialAmount === 'string' && /^\d+$/.test(potentialAmount)) {
-            amount = parseFloat(potentialAmount) / 100000000; // Convert from octas to APT
+      // Classify with priority: explicit core modules > keyword heuristics.
+      let type = "Contract";
+      const isCore =
+        moduleAddr === "0x1" ||
+        moduleAddr === "0x3" ||
+        moduleAddr === "0x4";
+
+      if (
+        fnName === "transfer" ||
+        fnName === "transfer_coins" ||
+        moduleName === "aptos_account" ||
+        (moduleName === "coin" && fnName?.startsWith("transfer"))
+      ) {
+        type = "Transfer";
+      } else if (
+        moduleName.includes("swap") ||
+        moduleName.includes("router") ||
+        moduleName.includes("dex") ||
+        moduleName.includes("amm") ||
+        fnLower.includes("swap") ||
+        fnLower.includes("liquidity")
+      ) {
+        type = "Swap";
+      } else if (
+        moduleName === "stake" ||
+        moduleName === "delegation_pool" ||
+        moduleName === "staking_contract" ||
+        fnLower.includes("delegation") ||
+        (fnLower.includes("stake") && !fnLower.includes("mistake"))
+      ) {
+        type = "Stake";
+      } else if (
+        moduleName === "token" ||
+        moduleName === "token_v2" ||
+        moduleName === "aptos_token" ||
+        moduleName === "collection" ||
+        fnLower.includes("mint") ||
+        fnLower.includes("nft") ||
+        (isCore === false && fnLower.includes("token"))
+      ) {
+        type = "NFT";
+      } else if (fn.length > 0) {
+        type = "Contract";
+      } else {
+        type = "Transaction";
+      }
+
+      // Amount extraction — first try coin events (most accurate),
+      // then fall back to numeric tail argument.
+      let amount = 0;
+      const events: any[] = Array.isArray(tx.events) ? tx.events : [];
+      for (const ev of events) {
+        const t: string = ev.type || "";
+        // Aptos coin/fungible-asset withdraw events carry the actual amount moved.
+        if (
+          t.endsWith("::coin::WithdrawEvent") ||
+          t.endsWith("::coin::DepositEvent") ||
+          t.endsWith("::fungible_asset::Withdraw") ||
+          t.endsWith("::fungible_asset::Deposit")
+        ) {
+          const raw = ev.data?.amount;
+          if (typeof raw === "string" && /^\d+$/.test(raw)) {
+            const apt = parseFloat(raw) / 1e8;
+            if (apt > amount) amount = apt; // largest movement
           }
         }
+      }
+      if (amount === 0 && tx.payload?.arguments && tx.payload.arguments.length > 0) {
+        const potentialAmount =
+          tx.payload.arguments[tx.payload.arguments.length - 1];
+        if (typeof potentialAmount === "string" && /^\d+$/.test(potentialAmount)) {
+          const apt = parseFloat(potentialAmount) / 1e8;
+          // Sanity cap — guards against arg that's not really an amount.
+          if (apt > 0 && apt < 1e9) amount = apt;
+        }
+      }
 
-        // Get gas used
-        const gasUsed = tx.gas_used ? parseInt(tx.gas_used) : 0;
-        const gasUnitPrice = tx.gas_unit_price ? parseInt(tx.gas_unit_price) : 100;
-        const gasCost = (gasUsed * gasUnitPrice) / 100000000; // Convert to APT
+      const gasUsed = tx.gas_used ? parseInt(tx.gas_used) : 0;
+      const gasUnitPrice = tx.gas_unit_price ? parseInt(tx.gas_unit_price) : 100;
+      const gasCost = (gasUsed * gasUnitPrice) / 1e8;
 
-        // Get the block proposer (validator) for this transaction
-        const proposer = blockProposerCache.get(tx.version) || null;
+      const proposer = blockProposerCache.get(tx.version) || null;
 
-        return {
-          hash: tx.hash,
-          version: tx.version,
-          type,
-          sender: tx.sender,
-          success: tx.success,
-          timestamp: parseInt(tx.timestamp) / 1000, // Convert microseconds to milliseconds
-          gasUsed,
-          gasCost,
-          amount,
-          function: tx.payload?.function || 'unknown',
-          sequenceNumber: tx.sequence_number,
-          proposer, // The validator that proposed the block containing this transaction
-        };
-      });
+      // Heuristic whale flag — > 1,000 APT moved in a single tx.
+      const whale = amount >= 1000;
+
+      return {
+        hash: tx.hash,
+        version: tx.version,
+        type,
+        sender: tx.sender,
+        success: tx.success,
+        timestamp: parseInt(tx.timestamp) / 1000,
+        gasUsed,
+        gasCost,
+        amount,
+        function: fn || "unknown",
+        sequenceNumber: tx.sequence_number,
+        proposer,
+        whale,
+      };
+    });
 
     console.log(`Successfully processed ${transactions.length} user transactions`);
 
