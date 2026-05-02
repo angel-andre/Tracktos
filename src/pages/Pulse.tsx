@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowLeft,
-  Sparkles,
+  Music2,
   Pause,
   Play,
   Camera,
@@ -71,17 +71,14 @@ export default function PulsePage() {
             </Link>
             <img src={aptosLogo} alt="Aptos" className="w-7 h-7" />
             <h1 className="text-lg font-bold flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" />
+              <Music2 className="w-4 h-4 text-primary" />
               Aptos Pulse
             </h1>
           </div>
 
           <Select value={mode} onValueChange={(v) => setMode(v as Mode)}>
             <SelectTrigger className="h-8 w-[200px] text-xs bg-card/40 border-border/60">
-              <div className="flex items-center gap-2">
-                <ActiveIcon className="w-3.5 h-3.5 text-primary" />
-                <SelectValue placeholder="Visualization" />
-              </div>
+              <SelectValue placeholder="Visualization" />
             </SelectTrigger>
             <SelectContent>
               {GROUPS.map((group) => {
