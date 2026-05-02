@@ -187,6 +187,7 @@ export function useBloomEngine({
       const mandalaSlices = 8;
       const mcx = w / 2;
       const mcy = h / 2;
+      const isConstellation = modeRef.current === "constellation";
       for (const b of bloomsRef.current) {
         if (!pausedRef.current) tickBloom(b, dt);
         const alive = aliveFrac(b);
@@ -208,12 +209,12 @@ export function useBloomEngine({
               const orig = { x: b.x, y: b.y };
               b.x = mx;
               b.y = my;
-              drawBloom(b, { ctx, hovered: isHover });
+              drawBloom(b, { ctx, hovered: isHover, mode: modeRef.current });
               b.x = orig.x;
               b.y = orig.y;
             }
           } else {
-            drawBloom(b, { ctx, hovered: isHover });
+            drawBloom(b, { ctx, hovered: isHover, mode: modeRef.current });
           }
           liveBlooms.push(b);
         } else if (alive <= 0 && !offscreen) {
@@ -230,7 +231,36 @@ export function useBloomEngine({
       }
       bloomsRef.current = liveBlooms;
 
-      // Edge ring (epoch progress placeholder — drawn by parent if desired)
+      // Constellation: connect each bloom to its nearest neighbor with a faint line
+      if (isConstellation && liveBlooms.length > 1) {
+        ctx.strokeStyle = cssVarHsl("--foreground", 0.08);
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        const maxDist = 220;
+        const maxDist2 = maxDist * maxDist;
+        for (let i = 0; i < liveBlooms.length; i++) {
+          const a = liveBlooms[i];
+          let bestJ = -1;
+          let bestD2 = maxDist2;
+          for (let j = i + 1; j < liveBlooms.length; j++) {
+            const c = liveBlooms[j];
+            const dx = a.x - c.x;
+            const dy = a.y - c.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 < bestD2) {
+              bestD2 = d2;
+              bestJ = j;
+            }
+          }
+          if (bestJ >= 0) {
+            const c = liveBlooms[bestJ];
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(c.x, c.y);
+          }
+        }
+        ctx.stroke();
+      }
 
       rafRef.current = requestAnimationFrame(tick);
     };
