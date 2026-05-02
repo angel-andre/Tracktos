@@ -43,14 +43,14 @@ const LEGEND: { label: string; cssVar: string }[] = [
 ];
 
 export default function PulsePage() {
-  const { transactions, stats, isConnected } = useRealtimeTransactions();
+  const { transactions, stats, isConnected, lastBurst } = useRealtimeTransactions();
   const [mode, setMode] = useState<Mode>("garden");
   const [paused, setPaused] = useState(false);
   const [density, setDensity] = useState(40);
   const [speed, setSpeed] = useState(1);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const snapshotRef = useRef<() => void>(() => {});
-  const audio = useAudioEngine({ transactions, tps: stats.tps, mode });
+  const audio = useAudioEngine({ transactions, mode, lastBurst });
   const activeMode = MODE_BY_ID[mode];
   const ActiveIcon = activeMode.icon;
 
@@ -141,6 +141,7 @@ export default function PulsePage() {
           paused={paused}
           tps={stats.tps}
           speed={speed}
+          lastBurst={lastBurst}
           onSelect={setSelected}
           registerSnapshot={(fn) => {
             snapshotRef.current = fn;
