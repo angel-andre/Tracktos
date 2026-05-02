@@ -520,8 +520,8 @@ export function drawBackground(
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
-  tps: number,
-  time: number,
+  _tps: number,
+  _time: number,
 ) {
   // Trail wash — slightly stronger so old strokes clear
   ctx.fillStyle = cssVarHsl("--background", 0.32);
@@ -535,13 +535,4 @@ export function drawBackground(
       ctx.fillRect(x, y, 1, 1);
     }
   }
-
-  // Soft TPS-driven center wash
-  const breathe = 0.5 + 0.5 * Math.sin(time * Math.max(0.4, tps / 50));
-  const intensity = 0.04 + Math.min(0.06, tps / 500);
-  const g = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * 0.6);
-  g.addColorStop(0, cssVarHsl("--primary", intensity * (0.5 + breathe * 0.5)));
-  g.addColorStop(1, cssVarHsl("--primary", 0));
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, h);
 }
