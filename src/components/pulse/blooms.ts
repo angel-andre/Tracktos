@@ -1,4 +1,5 @@
 import type { Transaction } from "@/hooks/useRealtimeTransactions";
+import type { Motion } from "./positioning";
 
 // Resolve an HSL CSS variable (e.g. "--chart-1") to a usable color string.
 // Returns "hsl(H S% L% / a)" using the live computed value so light/dark themes Just Work.
@@ -24,6 +25,7 @@ export interface BloomState {
   archetype: Archetype;
   colorVar: string;
   rotation: number;
+  motion: Motion;
 }
 
 export type Archetype =
@@ -86,6 +88,7 @@ export function createBloom(
   y: number,
   vx = 0,
   vy = 0,
+  motion: Motion = { kind: "linear" },
 ): BloomState {
   const arch = archetypeFor(tx);
   return {
@@ -101,14 +104,68 @@ export function createBloom(
     archetype: arch,
     colorVar: colorVarFor(arch),
     rotation: (parseInt(tx.version.slice(-4) || "0", 10) % 360) * (Math.PI / 180),
+    motion,
   };
 }
 
 export function tickBloom(b: BloomState, dt: number) {
   b.age += dt;
-  b.x += b.vx * dt;
-  b.y += b.vy * dt;
   b.rotation += dt * 0.4;
+  const m = b.motion;
+  switch (m.kind) {
+    case "linear":
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      break;
+    case "stream":
+    case "scroll":
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      break;
+    case "fall":
+      b.y += m.speed * dt;
+      break;
+    case "orbit": {
+      m.theta += m.omega * dt;
+      b.x = m.cx + Math.cos(m.theta) * m.r;
+      b.y = m.cy + Math.sin(m.theta) * m.r;
+      break;
+    }
+    case "spiral": {
+      m.theta += m.omega * dt;
+      m.r += m.growth * dt;
+      b.x = m.cx + Math.cos(m.theta) * m.r;
+      b.y = m.cy + Math.sin(m.theta) * m.r;
+      break;
+    }
+    case "boid": {
+      // Steer toward attractor with damping
+      const dx = m.tx - b.x;
+      const dy = m.ty - b.y;
+      b.vx += dx * dt * 0.6;
+      b.vy += dy * dt * 0.6;
+      b.vx *= 0.92;
+      b.vy *= 0.92;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      break;
+    }
+    case "burst": {
+      if (m.phase === "rise") {
+        b.vy += 380 * dt; // gravity
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        if (b.age >= m.explodeAt) {
+          m.phase = "explode";
+        }
+      } else {
+        // expand outward, fade fast
+        b.x += b.vx * dt * 0.3;
+        b.y += b.vy * dt * 0.3;
+      }
+      break;
+    }
+  }
 }
 
 // Returns 0..1 alive fraction (1 = just born, 0 = gone)
