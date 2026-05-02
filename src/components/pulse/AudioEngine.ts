@@ -2,17 +2,21 @@ import type { Transaction } from "@/hooks/useRealtimeTransactions";
 
 export type Voice = "bloom" | "crystal" | "pulse";
 
-// D minor pentatonic across 3 octaves (MIDI notes)
-// D, F, G, A, C
-const SCALE: number[] = (() => {
-  const intervals = [0, 3, 5, 7, 10];
-  const root = 50; // D3
+export interface ScaleDef {
+  root: number;
+  intervals: number[];
+  octaves: number;
+}
+
+function buildScale(s: ScaleDef): number[] {
   const out: number[] = [];
-  for (let oct = 0; oct < 3; oct++) {
-    for (const i of intervals) out.push(root + oct * 12 + i);
+  for (let oct = 0; oct < s.octaves; oct++) {
+    for (const i of s.intervals) out.push(s.root + oct * 12 + i);
   }
   return out;
-})();
+}
+
+const DEFAULT_SCALE: ScaleDef = { root: 50, intervals: [0, 3, 5, 7, 10], octaves: 3 };
 
 function midiToFreq(m: number) {
   return 440 * Math.pow(2, (m - 69) / 12);
@@ -49,6 +53,10 @@ export class AudioEngine {
   private active: ActiveVoice[] = [];
   private lastFrameTime = 0;
   private framePlayed = 0;
+  private scaleNotes: number[] = buildScale(DEFAULT_SCALE);
+  private quantize: number | null = null; // grid duration in seconds, null = off
+  private chordSize = 1;
+  private padRoot = 38;
 
   isReady() {
     return !!this.ctx;
@@ -95,11 +103,11 @@ export class AudioEngine {
     this.ambientFilter.Q.value = 0.8;
     this.ambientGain = this.ctx.createGain();
     this.ambientGain.gain.value = 0;
-    const padFreqs = [midiToFreq(38), midiToFreq(45), midiToFreq(50)];
-    for (const f of padFreqs) {
+    const padNotes = [this.padRoot, this.padRoot + 7, this.padRoot + 12];
+    for (const n of padNotes) {
       const o = this.ctx.createOscillator();
       o.type = "sine";
-      o.frequency.value = f;
+      o.frequency.value = midiToFreq(n);
       o.connect(this.ambientFilter);
       o.start();
       this.ambientOscs.push(o);
@@ -153,6 +161,26 @@ export class AudioEngine {
     this.voice = v;
   }
 
+  setScale(s: ScaleDef) {
+    this.scaleNotes = buildScale(s);
+    this.padRoot = s.root - 12; // pad an octave below root
+    if (this.ctx && this.ambientOscs.length === 3) {
+      const t = this.ctx.currentTime;
+      const padNotes = [this.padRoot, this.padRoot + 7, this.padRoot + 12];
+      this.ambientOscs.forEach((o, i) => {
+        o.frequency.linearRampToValueAtTime(midiToFreq(padNotes[i]), t + 0.6);
+      });
+    }
+  }
+
+  setQuantize(seconds: number | null) {
+    this.quantize = seconds;
+  }
+
+  setChordSize(n: number) {
+    this.chordSize = Math.max(1, Math.min(4, n));
+  }
+
   setAmbientLevel(tps: number) {
     if (!this.ctx || !this.ambientGain || !this.ambientFilter) return;
     const t = this.ctx.currentTime;
@@ -166,14 +194,19 @@ export class AudioEngine {
   playTransaction(tx: Transaction) {
     if (!this.ctx || this.muted) return;
     const ctx = this.ctx;
-    const now = ctx.currentTime;
+    const rawNow = ctx.currentTime;
+    let now = rawNow;
+    if (this.quantize) {
+      const grid = this.quantize;
+      now = Math.ceil(rawNow / grid) * grid;
+    }
 
     // Throttle: cap notes per ~16ms frame
-    if (now - this.lastFrameTime < 0.016) {
+    if (rawNow - this.lastFrameTime < 0.016) {
       this.framePlayed++;
       if (this.framePlayed > 3) return;
     } else {
-      this.lastFrameTime = now;
+      this.lastFrameTime = rawNow;
       this.framePlayed = 1;
     }
 
@@ -192,7 +225,8 @@ export class AudioEngine {
 
     // Pitch from sender hash
     const h = hashString(tx.sender || tx.hash);
-    const note = SCALE[h % SCALE.length];
+    const baseIdx = h % this.scaleNotes.length;
+    const note = this.scaleNotes[baseIdx];
     const freq = midiToFreq(note);
 
     // Velocity from amount (log scaled)
@@ -218,8 +252,14 @@ export class AudioEngine {
 
     const useVoice = this.voice === "pulse" ? "pulse" : typeVoice;
 
-    const nodes = this.synth(useVoice, freq, velocity, duration, wetSend, now);
-    this.active.push({ nodes, endsAt: now + duration + 0.5 });
+    const chord = this.chordSize;
+    for (let c = 0; c < chord; c++) {
+      const offsetIdx = (baseIdx + c * 2) % this.scaleNotes.length;
+      const f = c === 0 ? freq : midiToFreq(this.scaleNotes[offsetIdx]);
+      const v = c === 0 ? velocity : velocity * 0.6;
+      const nodes = this.synth(useVoice, f, v, duration, wetSend, now);
+      this.active.push({ nodes, endsAt: now + duration + 0.5 });
+    }
   }
 
   private synth(
