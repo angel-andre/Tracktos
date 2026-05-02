@@ -680,7 +680,7 @@ export default function IndexPage() {
             </TabsContent>
           </Tabs>
         )}
-      </div>
+      </main>
     </div>
   );
 }
