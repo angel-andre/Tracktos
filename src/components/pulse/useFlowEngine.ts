@@ -356,6 +356,12 @@ export function useFlowEngine({
         puddlesRef.current.tick(dt);
       }
 
+      // Density (Flows slider) — trim live flows down immediately when
+      // the user lowers the cap, so the slider feels responsive.
+      if (flowsRef.current.length > maxRef.current) {
+        flowsRef.current.splice(0, flowsRef.current.length - maxRef.current);
+      }
+
       // Constellation persistent edges — drawn under flows.
       if (m === "constellation") {
         edgesRef.current.draw(ctx, timeRef.current);
@@ -407,8 +413,11 @@ export function useFlowEngine({
 
       // Tick + draw flows
       const live: FlowState[] = [];
+      const spd = Math.max(0.1, speedRef.current);
       for (const f of flowsRef.current) {
-        if (!pausedRef.current) f.age += dt;
+        // Speed slider applies to in-flight flows so the change is felt
+        // instantly, not only on next ingest.
+        if (!pausedRef.current) f.age += dt * spd;
         if (flowAlive(f) > 0) {
           drawFlow(f, { ctx, mode: m, width: w, height: h, time: timeRef.current });
           live.push(f);
