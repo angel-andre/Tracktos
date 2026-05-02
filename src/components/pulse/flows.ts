@@ -288,7 +288,10 @@ function drawArc(
   const trail = 0.28; // fraction of path visible behind head
   const uStart = Math.max(0, u - trail);
   ctx.lineCap = "round";
-  ctx.lineWidth = 1 + f.weight * 1.4;
+  ctx.lineWidth = 1 + f.weight * 1.4 + (f.whale ? 1.4 : 0);
+  // Failed transactions render with a short dashed stroke instead of solid.
+  if (!f.success) ctx.setLineDash([4, 3]);
+  else ctx.setLineDash([]);
   // Tapered trail with gradient by sampling
   for (let i = 0; i < segments; i++) {
     const t0 = uStart + (i / segments) * (u - uStart);
@@ -296,16 +299,17 @@ function drawArc(
     if (t1 <= t0) continue;
     const p0 = bezierPoint(f, t0);
     const p1 = bezierPoint(f, t1);
-    const segAlpha = alpha * (i / segments) * 0.85;
+    const segAlpha = alpha * (i / segments) * (f.success ? 0.85 : 0.5);
     ctx.strokeStyle = cssVarHsl(f.colorVar, segAlpha);
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);
     ctx.lineTo(p1.x, p1.y);
     ctx.stroke();
   }
+  ctx.setLineDash([]);
   // Comet head
   const head = bezierPoint(f, u);
-  const headR = 2.2 + f.weight * 3;
+  const headR = 2.2 + f.weight * 3 + (f.whale ? 2 : 0);
   const grad = ctx.createRadialGradient(head.x, head.y, 0, head.x, head.y, headR * 4);
   grad.addColorStop(0, cssVarHsl(f.colorVar, 0.9 * alpha));
   grad.addColorStop(0.4, cssVarHsl(f.colorVar, 0.25 * alpha));
@@ -318,6 +322,14 @@ function drawArc(
   ctx.beginPath();
   ctx.arc(head.x, head.y, headR, 0, Math.PI * 2);
   ctx.fill();
+  // Whale halo ring at the head — unmistakable for big movements.
+  if (f.whale) {
+    ctx.strokeStyle = cssVarHsl(f.colorVar, 0.6 * alpha);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, headR * 2.6, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
   // Garden: sprout a tiny bloom at destination on arrival
   if (arrived && dctx.mode === "garden") {
