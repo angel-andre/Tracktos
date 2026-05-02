@@ -159,27 +159,39 @@ export default function PulsePage() {
   };
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-background pointer-events-none" />
+    <div className="min-h-screen relative overflow-hidden">
+      {/* Artistic background — aurora blobs + dotted grid (matches landing) */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
+        <div className="absolute inset-0 bg-grid-aptos opacity-30" />
+        <div className="absolute -top-40 -left-40 w-[42rem] h-[42rem] rounded-full bg-[hsl(12_99%_75%/0.35)] blur-3xl animate-float-slow dark:bg-[hsl(12_99%_45%/0.25)]" />
+        <div className="absolute top-1/3 -right-40 w-[38rem] h-[38rem] rounded-full bg-[hsl(125_60%_85%/0.45)] blur-3xl animate-float-slow dark:bg-[hsl(125_60%_30%/0.3)]" style={{ animationDelay: "-6s" }} />
+        <div className="absolute bottom-0 left-1/3 w-[34rem] h-[34rem] rounded-full bg-[hsl(205_70%_80%/0.4)] blur-3xl animate-float-slow dark:bg-[hsl(205_50%_30%/0.28)]" style={{ animationDelay: "-3s" }} />
+      </div>
 
       {/* Header */}
-      <header className="relative z-10 border-b border-border/50 backdrop-blur-xl bg-background/70">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+      <header className="relative z-10 px-4 sm:px-6 pt-4">
+        <div className="max-w-[1600px] mx-auto glass-panel rounded-2xl px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
             <Link to="/">
-              <Button variant="ghost" size="icon" className="rounded-full h-8 w-8">
+              <Button variant="ghost" size="icon" className="rounded-full h-8 w-8 hover:bg-foreground/5">
                 <ArrowLeft className="w-4 h-4" />
               </Button>
             </Link>
-            <img src={aptosLogo} alt="Aptos" className="w-7 h-7" />
-            <h1 className="text-lg font-bold flex items-center gap-2">
-              <Music2 className="w-4 h-4 text-primary" />
-              Aptos Pulse
-            </h1>
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-accent/40 blur-md animate-pulse-ring" />
+              <img src={aptosLogo} alt="Aptos" className="relative w-8 h-8" />
+            </div>
+            <div className="leading-none">
+              <h1 className="text-base font-bold tracking-tight flex items-center gap-2">
+                <span className="text-gradient-aptos">Aptos Pulse</span>
+                <Music2 className="w-3.5 h-3.5 text-accent" />
+              </h1>
+              <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Live transaction symphony</span>
+            </div>
           </div>
 
           <Select value={mode} onValueChange={(v) => setMode(v as Mode)}>
-            <SelectTrigger className="h-8 w-[200px] text-xs bg-card/40 border-border/60">
+            <SelectTrigger className="h-9 w-[220px] text-xs glass-panel border-border/60 rounded-full">
               <SelectValue placeholder="Visualization" />
             </SelectTrigger>
             <SelectContent>
@@ -207,35 +219,40 @@ export default function PulsePage() {
             </SelectContent>
           </Select>
 
-          <div className="flex items-center gap-3 text-xs">
-            <div className="flex items-center gap-1.5">
-              <Zap className="w-3.5 h-3.5 text-primary" />
-              <span className="font-medium">{Math.round(stats.tps)}</span>
-              <span className="text-muted-foreground">TPS</span>
+          <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-1 glass-panel rounded-full px-2 py-1.5">
+              <div className="flex items-center gap-1.5 px-2">
+                <Zap className="w-3.5 h-3.5 text-accent" />
+                <span className="font-semibold">{Math.round(stats.tps)}</span>
+                <span className="text-muted-foreground">TPS</span>
+              </div>
+              <span className="w-px h-3.5 bg-border/60" />
+              <div className="flex items-center gap-1.5 px-2">
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    isConnected
+                      ? "bg-[hsl(125_60%_50%)] animate-pulse shadow-[0_0_8px_hsl(125_60%_50%)]"
+                      : "bg-destructive"
+                  }`}
+                />
+                <span className="text-muted-foreground">
+                  {isConnected ? "Live" : "Connecting"}
+                </span>
+              </div>
             </div>
-            <div className="w-px h-4 bg-border/60" />
-            <div className="flex items-center gap-1.5">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  isConnected ? "bg-green-500 animate-pulse" : "bg-red-500"
-                }`}
-              />
-              <span className="text-muted-foreground">
-                {isConnected ? "Live" : "Connecting"}
-              </span>
-            </div>
-            <ThemeToggle />
             <Link to="/globe">
-              <Button variant="outline" size="sm" className="h-8 text-xs">
+              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 rounded-full glass-panel border-foreground/15">
                 Globe
               </Button>
             </Link>
+            <ThemeToggle />
           </div>
         </div>
       </header>
 
       {/* Canvas + overlays */}
-      <div className="relative h-[calc(100vh-65px)]">
+      <div className="relative h-[calc(100vh-92px)] px-4 sm:px-6 pt-3 pb-3">
+        <div className="relative h-full w-full glass-panel rounded-2xl overflow-hidden">
         <PulseCanvas
           transactions={transactions}
           mode={mode}
@@ -256,10 +273,11 @@ export default function PulsePage() {
         />
 
         {/* Legend */}
-        <Card className="absolute top-4 left-4 bg-card/40 backdrop-blur-xl border-border/50 w-[180px]">
+        <Card className="absolute top-4 left-4 glass-panel border-border/50 w-[200px]">
           <CardHeader className="p-3 pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Legend
+            <CardTitle className="text-xs font-medium uppercase tracking-[0.18em] flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+              <span className="text-gradient-aptos">Legend</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-0 space-y-1.5">
@@ -272,7 +290,7 @@ export default function PulsePage() {
                 <span className="text-foreground">{l.label}</span>
               </div>
             ))}
-            <div className="pt-2 mt-2 border-t border-border/40 text-[10px] text-muted-foreground leading-relaxed">
+            <div className="pt-2 mt-2 border-t border-border/40 text-[10px] text-muted-foreground leading-relaxed italic">
               {activeMode.description}
             </div>
             <div className="pt-2 mt-2 border-t border-border/40 space-y-1 font-mono text-[10px]">
@@ -290,7 +308,7 @@ export default function PulsePage() {
               </div>
               <div className="flex justify-between gap-2">
                 <span className="text-muted-foreground">TPS</span>
-                <span className="text-primary">{stats.tps.toFixed(1)}</span>
+                <span className="text-accent">{stats.tps.toFixed(1)}</span>
               </div>
               <div className="flex justify-between gap-2">
                 <span className="text-muted-foreground">FAIL %</span>
@@ -311,21 +329,22 @@ export default function PulsePage() {
         </Card>
 
         {/* Recent feed */}
-        <Card className="absolute top-4 right-4 bg-card/40 backdrop-blur-xl border-border/50 w-[260px] hidden md:block">
+        <Card className="absolute top-4 right-4 glass-panel border-border/50 w-[260px] hidden md:block">
           <CardHeader className="p-3 pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Recent Blooms
+            <CardTitle className="text-xs font-medium uppercase tracking-[0.18em] flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-[hsl(125_60%_50%)] animate-pulse" />
+              <span className="text-gradient-aptos">Recent Blooms</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3 pt-0 space-y-1.5">
             {recent.length === 0 && (
-              <div className="text-xs text-muted-foreground">Waiting…</div>
+              <div className="text-xs text-muted-foreground italic">Listening to the chain…</div>
             )}
             {recent.map((tx) => (
               <button
                 key={tx.hash}
                 onClick={() => setSelected(tx)}
-                className="w-full flex items-center justify-between gap-2 text-xs hover:bg-accent/30 rounded px-1.5 py-1 transition-colors text-left"
+                className="w-full flex items-center justify-between gap-2 text-xs hover:bg-accent/15 rounded-md px-1.5 py-1 transition-colors text-left"
               >
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
                   {tx.type}
@@ -334,7 +353,7 @@ export default function PulsePage() {
                   {tx.hash.slice(0, 8)}…
                 </span>
                 {tx.amount > 0 && (
-                  <span className="text-primary text-[10px] shrink-0">
+                  <span className="text-accent text-[10px] shrink-0 font-medium">
                     {tx.amount.toFixed(2)}
                   </span>
                 )}
@@ -344,11 +363,11 @@ export default function PulsePage() {
         </Card>
 
         {/* Bottom controls */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-card/50 backdrop-blur-xl border border-border/50 rounded-full px-4 py-2">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 glass-panel rounded-full px-4 py-2 shadow-[var(--shadow-elevated)]">
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 gap-2"
+            className="h-8 gap-2 hover:bg-foreground/5 rounded-full"
             onClick={() => setPaused((p) => !p)}
           >
             {paused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
@@ -358,7 +377,7 @@ export default function PulsePage() {
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 gap-2"
+            className="h-8 gap-2 hover:bg-foreground/5 rounded-full"
             onClick={handleSnapshot}
           >
             <Camera className="w-3.5 h-3.5" />
@@ -366,7 +385,7 @@ export default function PulsePage() {
           </Button>
           <div className="w-px h-5 bg-border/60" />
           <div className="flex items-center gap-2 min-w-[160px]">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-[0.15em]">
               Flows
             </span>
             <Slider
@@ -381,7 +400,7 @@ export default function PulsePage() {
           </div>
           <div className="w-px h-5 bg-border/60" />
           <div className="flex items-center gap-2 min-w-[140px]">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-[0.15em]">
               Speed
             </span>
             <Slider
@@ -392,7 +411,7 @@ export default function PulsePage() {
               onValueChange={(v) => setSpeed(v[0] / 10)}
               className="w-20"
             />
-            <span className="text-xs font-mono w-9 text-right">{speed.toFixed(1)}×</span>
+            <span className="text-xs font-mono w-9 text-right text-accent">{speed.toFixed(1)}×</span>
           </div>
           <div className="w-px h-5 bg-border/60" />
           <AudioControls
@@ -407,10 +426,10 @@ export default function PulsePage() {
 
         {/* Selected detail */}
         {selected && (
-          <Card className="absolute bottom-20 left-4 max-w-md bg-card/90 backdrop-blur-xl border-primary/30">
+          <Card className="absolute bottom-20 left-4 max-w-md glass-panel border-accent/40 shadow-[var(--shadow-elevated)]">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center justify-between">
-                <span>Transaction</span>
+                <span className="text-gradient-aptos">Transaction</span>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -435,7 +454,7 @@ export default function PulsePage() {
               {selected.amount > 0 && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Amount</span>
-                  <span className="text-primary font-medium">
+                  <span className="text-accent font-medium">
                     {selected.amount.toFixed(4)} APT
                   </span>
                 </div>
@@ -454,13 +473,14 @@ export default function PulsePage() {
                 href={`https://explorer.aptoslabs.com/txn/${selected.hash}?network=mainnet`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 text-primary hover:underline pt-1"
+                className="flex items-center gap-1 text-accent hover:underline pt-1"
               >
                 View on Explorer <ExternalLink className="w-3 h-3" />
               </a>
             </CardContent>
           </Card>
         )}
+        </div>
       </div>
     </div>
   );
