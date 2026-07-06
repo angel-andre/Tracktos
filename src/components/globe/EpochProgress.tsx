@@ -1,57 +1,29 @@
-import { useState, useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Clock, Timer, AlertCircle } from "lucide-react";
+import { Clock, Timer } from "lucide-react";
 
 interface EpochProgressProps {
   epoch: number;
-  ledgerTimestamp?: string; // Microseconds from Aptos API
+  /** 0-100, computed live from on-chain reconfiguration timestamp. */
+  progress: number;
+  /** Length of the current epoch in seconds (Aptos ~7200s). */
+  intervalSeconds: number;
+  /** Seconds elapsed since the last reconfiguration. */
+  elapsedSeconds: number;
 }
 
-// Aptos epoch duration is approximately 2 hours (7200 seconds)
-const EPOCH_DURATION_SECONDS = 2 * 60 * 60;
-
-export function EpochProgress({ epoch, ledgerTimestamp }: EpochProgressProps) {
-  const [, setTick] = useState(0);
-  
-  // Calculate epoch progress from ledger timestamp
-  // The ledger timestamp in microseconds tells us the current blockchain time
-  // We estimate progress based on time within the current epoch cycle
+export function EpochProgress({ epoch, progress, intervalSeconds, elapsedSeconds }: EpochProgressProps) {
   const { epochProgress, timeRemaining } = useMemo(() => {
-    if (!ledgerTimestamp || ledgerTimestamp === "0") {
+    if (!intervalSeconds || intervalSeconds <= 0) {
       return { epochProgress: 0, timeRemaining: "Calculating..." };
     }
-    
-    // Convert microseconds to seconds
-    const ledgerTimeSeconds = parseInt(ledgerTimestamp) / 1_000_000;
-    
-    // Aptos epochs started at genesis (Oct 12, 2022)
-    // Each epoch is ~2 hours. We calculate progress within current epoch
-    // by finding position in the 2-hour cycle
-    const secondsIntoEpoch = ledgerTimeSeconds % EPOCH_DURATION_SECONDS;
-    const progress = (secondsIntoEpoch / EPOCH_DURATION_SECONDS) * 100;
-    
-    const remainingSeconds = EPOCH_DURATION_SECONDS - secondsIntoEpoch;
-    const hours = Math.floor(remainingSeconds / 3600);
-    const minutes = Math.floor((remainingSeconds % 3600) / 60);
-    const seconds = Math.floor(remainingSeconds % 60);
-    
-    let timeStr = "";
-    if (hours > 0) {
-      timeStr = `${hours}h ${minutes}m`;
-    } else if (minutes > 0) {
-      timeStr = `${minutes}m ${seconds}s`;
-    } else {
-      timeStr = `${seconds}s`;
-    }
-    
+    const remaining = Math.max(0, intervalSeconds - elapsedSeconds);
+    const hours = Math.floor(remaining / 3600);
+    const minutes = Math.floor((remaining % 3600) / 60);
+    const seconds = Math.floor(remaining % 60);
+    const timeStr = hours > 0 ? `${hours}h ${minutes}m` : minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
     return { epochProgress: progress, timeRemaining: timeStr };
-  }, [ledgerTimestamp]);
-
-  // Re-render every second for countdown
-  useEffect(() => {
-    const interval = setInterval(() => setTick(t => t + 1), 1000);
-    return () => clearInterval(interval);
-  }, []);
+  }, [progress, intervalSeconds, elapsedSeconds]);
 
   // Calculate color based on progress
   const getProgressColor = () => {
@@ -60,7 +32,7 @@ export function EpochProgress({ epoch, ledgerTimestamp }: EpochProgressProps) {
     return "bg-primary";
   };
 
-  const isLoading = !ledgerTimestamp || ledgerTimestamp === "0";
+  const isLoading = !intervalSeconds || intervalSeconds <= 0;
 
   return (
     <Card className="bg-card/50 border-border/50">
