@@ -117,8 +117,10 @@ export default function GlobePage() {
               <TPSChart currentTPS={txStats.tps} peakTPS={networkStats.peakTps} />
               <TransactionTypeChart transactions={transactions} />
               <EpochProgress
-                epoch={parseInt(txStats.epoch) || 0}
-                ledgerTimestamp={txStats.ledgerTimestamp}
+                epoch={networkStats.epoch || parseInt(txStats.epoch) || 0}
+                progress={networkStats.epochProgress}
+                intervalSeconds={networkStats.epochIntervalSeconds}
+                elapsedSeconds={networkStats.epochElapsedSeconds}
               />
             </div>
 

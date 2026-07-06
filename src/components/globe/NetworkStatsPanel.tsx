@@ -1,5 +1,4 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { 
   Coins, 
   TrendingUp
@@ -26,14 +25,17 @@ export function NetworkStatsPanel({ stats }: NetworkStatsPanelProps) {
           <div className="flex items-center gap-2 mb-2">
             <Coins className="w-4 h-4 text-primary" />
             <span className="text-xs text-muted-foreground">Total Staked</span>
-            <Badge variant="outline" className="text-[10px] ml-auto">Static</Badge>
+            <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground">
+              <span className="w-1.5 h-1.5 rounded-full bg-[hsl(125_60%_50%)] animate-pulse" />
+              Live
+            </span>
           </div>
           <p className="text-xl font-bold text-foreground mb-1">
             {formatNumber(stats.totalStaked)} <span className="text-sm font-normal text-muted-foreground">APT</span>
           </p>
           <div className="flex items-center gap-2">
             <TrendingUp className="w-3 h-3 text-green-500" />
-            <span className="text-xs text-green-500">{stats.aprReward}% APR Reward</span>
+            <span className="text-xs text-green-500">{stats.aprReward.toFixed(3)}% APR Reward</span>
           </div>
         </CardContent>
       </Card>
@@ -44,7 +46,10 @@ export function NetworkStatsPanel({ stats }: NetworkStatsPanelProps) {
           <div className="flex items-center gap-2 mb-1">
             <Coins className="w-4 h-4 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">Total Supply</span>
-            <Badge variant="outline" className="text-[10px] ml-auto">Static</Badge>
+            <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground">
+              <span className="w-1.5 h-1.5 rounded-full bg-[hsl(125_60%_50%)] animate-pulse" />
+              Live
+            </span>
           </div>
           <p className="text-lg font-bold text-foreground">
             {formatNumber(stats.totalSupply)} <span className="text-sm font-normal text-muted-foreground">APT</span>
@@ -52,9 +57,8 @@ export function NetworkStatsPanel({ stats }: NetworkStatsPanelProps) {
         </CardContent>
       </Card>
       
-      {/* Static data indicator */}
       <p className="text-[10px] text-muted-foreground text-center">
-        Staking data from Aptos Explorer • Dec 2024
+        Live on-chain data · Aptos mainnet fullnode
       </p>
     </div>
   );
