@@ -245,12 +245,12 @@ export function useValidatorNodes() {
 
     const fetchLive = async () => {
       try {
-        const [ledger, config, blockRes, valSet, stakeCfg, cgResp] = await Promise.all([
+        const [ledger, config, blockRes, valSet, rewardsCfg, cgResp] = await Promise.all([
           fetch(`${APTOS}`).then(r => r.ok ? r.json() : null).catch(() => null),
           fetch(`${APTOS}/accounts/0x1/resource/0x1::reconfiguration::Configuration`).then(r => r.ok ? r.json() : null).catch(() => null),
           fetch(`${APTOS}/accounts/0x1/resource/0x1::block::BlockResource`).then(r => r.ok ? r.json() : null).catch(() => null),
           fetch(`${APTOS}/accounts/0x1/resource/0x1::stake::ValidatorSet`).then(r => r.ok ? r.json() : null).catch(() => null),
-          fetch(`${APTOS}/accounts/0x1/resource/0x1::staking_config::StakingConfig`).then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch(`${APTOS}/accounts/0x1/resource/0x1::staking_config::StakingRewardsConfig`).then(r => r.ok ? r.json() : null).catch(() => null),
           fetch("https://api.coingecko.com/api/v3/coins/aptos?localization=false&tickers=false&community_data=false&developer_data=false&sparkline=false").then(r => r.ok ? r.json() : null).catch(() => null),
         ]);
 
@@ -282,15 +282,22 @@ export function useValidatorNodes() {
           const epochNum = Number(config?.data?.epoch || ledger?.epoch || 0);
           if (epochNum > 0) next.epoch = epochNum;
 
-          // APR from staking config (rewards per epoch * epochs per year)
-          const rewardsRate = Number(stakeCfg?.data?.rewards_rate ?? 0);
-          const rewardsDenom = Number(stakeCfg?.data?.rewards_rate_denominator ?? 0);
-          if (rewardsRate > 0 && rewardsDenom > 0 && epochIntervalUs > 0) {
-            const epochsPerYear = (365 * 24 * 3600 * 1_000_000) / epochIntervalUs;
-            const apr = (rewardsRate / rewardsDenom) * epochsPerYear * 100;
-            if (isFinite(apr) && apr > 0 && apr < 20) {
-              next.aprReward = Math.round(apr * 1000) / 1000;
-            }
+          // APR from StakingRewardsConfig — the AIP-42 decreasing-rate curve
+          // used by Aptos mainnet. `rewards_rate.value` is a FixedPoint64
+          // (denominator = 2^64) representing the fraction of stake rewarded
+          // per epoch. APR = rate_per_epoch * epochs_per_year * 100.
+          const rateValueStr = rewardsCfg?.data?.rewards_rate?.value;
+          if (rateValueStr && epochIntervalUs > 0) {
+            try {
+              const rateValue = BigInt(rateValueStr);
+              const FP64 = 18446744073709551616; // 2^64
+              const ratePerEpoch = Number(rateValue) / FP64;
+              const epochsPerYear = (365 * 24 * 3600 * 1_000_000) / epochIntervalUs;
+              const apr = ratePerEpoch * epochsPerYear * 100;
+              if (isFinite(apr) && apr > 0 && apr < 20) {
+                next.aprReward = Math.round(apr * 1000) / 1000;
+              }
+            } catch { /* ignore */ }
           }
 
           // Total supply from CoinGecko (falls back to previous value on failure)
