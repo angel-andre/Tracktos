@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Clock, Timer } from "lucide-react";
 
@@ -13,17 +13,33 @@ interface EpochProgressProps {
 }
 
 export function EpochProgress({ epoch, progress, intervalSeconds, elapsedSeconds }: EpochProgressProps) {
+  // Smoothly interpolate between 30s upstream refreshes so the countdown ticks.
+  const anchorRef = useRef({ elapsed: elapsedSeconds, at: Date.now() });
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    anchorRef.current = { elapsed: elapsedSeconds, at: Date.now() };
+  }, [elapsedSeconds]);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
   const { epochProgress, timeRemaining } = useMemo(() => {
     if (!intervalSeconds || intervalSeconds <= 0) {
       return { epochProgress: 0, timeRemaining: "Calculating..." };
     }
-    const remaining = Math.max(0, intervalSeconds - elapsedSeconds);
+    const interpolated = Math.min(
+      intervalSeconds,
+      anchorRef.current.elapsed + (now - anchorRef.current.at) / 1000,
+    );
+    const remaining = Math.max(0, intervalSeconds - interpolated);
+    const pct = Math.min(100, (interpolated / intervalSeconds) * 100);
     const hours = Math.floor(remaining / 3600);
     const minutes = Math.floor((remaining % 3600) / 60);
     const seconds = Math.floor(remaining % 60);
     const timeStr = hours > 0 ? `${hours}h ${minutes}m` : minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-    return { epochProgress: progress, timeRemaining: timeStr };
-  }, [progress, intervalSeconds, elapsedSeconds]);
+    return { epochProgress: pct, timeRemaining: timeStr };
+  }, [progress, intervalSeconds, now]);
 
   // Calculate color based on progress
   const getProgressColor = () => {
