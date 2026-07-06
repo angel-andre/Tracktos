@@ -23,6 +23,8 @@ export interface NetworkStats {
   totalSupply: number;
   epoch: number;
   epochProgress: number;
+  epochIntervalSeconds: number;
+  epochElapsedSeconds: number;
 }
 
 // Map of known validator addresses to their city locations
@@ -219,19 +221,93 @@ function getValidatorLocationIndex(validatorAddress: string, validators: Validat
 export function useValidatorNodes() {
   const [validators] = useState<ValidatorNode[]>(VALIDATOR_NODES);
   const [stats, setStats] = useState<NetworkStats>({
-    totalValidators: 133,
-    totalFullnodes: 490,
-    countries: 19,
-    cities: 45,
-    totalStaked: 846867841,
-    aprReward: 5.193,
-    tps: 99,
+    // Baseline snapshot from Aptos Explorer (Jul 6 2026) — overridden by live fetch below.
+    totalValidators: 97,
+    totalFullnodes: 428,
+    countries: 15,
+    cities: 34,
+    totalStaked: 770190464,
+    aprReward: 2.6,
+    tps: 0,
     peakTps: 16162,
-    totalSupply: 1190534340,
-    epoch: 14164,
-    epochProgress: 6,
+    totalSupply: 1205227612,
+    epoch: 16434,
+    epochProgress: 59,
+    epochIntervalSeconds: 7200,
+    epochElapsedSeconds: 0,
   });
   const [isLoading] = useState(false);
+
+  // Live network stats — polled directly from the public Aptos fullnode API
+  // and CoinGecko. CORS is enabled on both endpoints for browser access.
+  useEffect(() => {
+    const APTOS = "https://api.mainnet.aptoslabs.com/v1";
+
+    const fetchLive = async () => {
+      try {
+        const [ledger, config, blockRes, valSet, stakeCfg, cgResp] = await Promise.all([
+          fetch(`${APTOS}`).then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch(`${APTOS}/accounts/0x1/resource/0x1::reconfiguration::Configuration`).then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch(`${APTOS}/accounts/0x1/resource/0x1::block::BlockResource`).then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch(`${APTOS}/accounts/0x1/resource/0x1::stake::ValidatorSet`).then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch(`${APTOS}/accounts/0x1/resource/0x1::staking_config::StakingConfig`).then(r => r.ok ? r.json() : null).catch(() => null),
+          fetch("https://api.coingecko.com/api/v3/coins/aptos?localization=false&tickers=false&community_data=false&developer_data=false&sparkline=false").then(r => r.ok ? r.json() : null).catch(() => null),
+        ]);
+
+        setStats(prev => {
+          const next = { ...prev };
+
+          // Validator count + total staked (sum of active voting_power in octas)
+          const active = valSet?.data?.active_validators;
+          if (Array.isArray(active) && active.length > 0) {
+            next.totalValidators = active.length;
+            let sum = 0n;
+            for (const v of active) {
+              try { sum += BigInt(v.voting_power || "0"); } catch { /* ignore */ }
+            }
+            const staked = Number(sum / 100000000n); // octas -> APT
+            if (staked > 0) next.totalStaked = staked;
+          }
+
+          // Epoch progress from reconfiguration timestamp + block interval
+          const epochIntervalUs = Number(blockRes?.data?.epoch_interval || 0);
+          const lastReconfigUs = Number(config?.data?.last_reconfiguration_time || 0);
+          const ledgerUs = Number(ledger?.ledger_timestamp || 0);
+          if (epochIntervalUs > 0 && lastReconfigUs > 0 && ledgerUs > 0) {
+            const elapsedUs = Math.max(0, ledgerUs - lastReconfigUs);
+            next.epochIntervalSeconds = epochIntervalUs / 1_000_000;
+            next.epochElapsedSeconds = Math.min(next.epochIntervalSeconds, elapsedUs / 1_000_000);
+            next.epochProgress = Math.min(100, (elapsedUs / epochIntervalUs) * 100);
+          }
+          const epochNum = Number(config?.data?.epoch || ledger?.epoch || 0);
+          if (epochNum > 0) next.epoch = epochNum;
+
+          // APR from staking config (rewards per epoch * epochs per year)
+          const rewardsRate = Number(stakeCfg?.data?.rewards_rate ?? 0);
+          const rewardsDenom = Number(stakeCfg?.data?.rewards_rate_denominator ?? 0);
+          if (rewardsRate > 0 && rewardsDenom > 0 && epochIntervalUs > 0) {
+            const epochsPerYear = (365 * 24 * 3600 * 1_000_000) / epochIntervalUs;
+            const apr = (rewardsRate / rewardsDenom) * epochsPerYear * 100;
+            if (isFinite(apr) && apr > 0 && apr < 20) {
+              next.aprReward = Math.round(apr * 1000) / 1000;
+            }
+          }
+
+          // Total supply from CoinGecko (falls back to previous value on failure)
+          const supply = Number(cgResp?.market_data?.total_supply || 0);
+          if (supply > 0) next.totalSupply = Math.round(supply);
+
+          return next;
+        });
+      } catch (e) {
+        console.warn("Live network stats fetch failed", e);
+      }
+    };
+
+    fetchLive();
+    const id = setInterval(fetchLive, 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Get validator location for a given proposer address
   const getValidatorLocation = useCallback((proposerAddress: string | null): ValidatorNode | null => {
